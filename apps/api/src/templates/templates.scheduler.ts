@@ -1,12 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { TemplatesService } from './templates.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class TemplatesScheduler {
   private readonly logger = new Logger(TemplatesScheduler.name);
 
-  constructor(private readonly templatesService: TemplatesService) {}
+  constructor(
+    private readonly templatesService: TemplatesService,
+    private readonly notificationsService: NotificationsService
+  ) {}
 
   @Cron('0 5 0 1 * *')
   async handleMonthlyGeneration() {
@@ -27,6 +31,13 @@ export class TemplatesScheduler {
 
         if (result.created || result.updated) {
           generatedTaskIds.push(result.task.id);
+        }
+
+        if (result.created) {
+          await this.notificationsService.notifyTaskCreation(result.task.id, {
+            automated: true,
+            reason: 'Monthly task generation'
+          });
         }
       }
 

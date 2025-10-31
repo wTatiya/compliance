@@ -53,6 +53,7 @@ async function seedReferenceData() {
       firstName: 'Ivy',
       lastName: 'Nguyen',
       email: 'ivy.nguyen@example.com',
+      phoneNumber: '+15551230100',
       departmentName: 'Information Security',
       roleNames: ['Compliance Manager']
     },
@@ -60,6 +61,7 @@ async function seedReferenceData() {
       firstName: 'Noah',
       lastName: 'Wright',
       email: 'noah.wright@example.com',
+      phoneNumber: '+15551230200',
       departmentName: 'Information Security',
       roleNames: ['Control Owner']
     },
@@ -67,6 +69,7 @@ async function seedReferenceData() {
       firstName: 'Priya',
       lastName: 'Chandrasekar',
       email: 'priya.chandrasekar@example.com',
+      phoneNumber: '+15551230300',
       departmentName: 'Finance Compliance',
       roleNames: ['Auditor']
     }
@@ -79,11 +82,13 @@ async function seedReferenceData() {
         firstName: assignee.firstName,
         lastName: assignee.lastName,
         email: assignee.email,
+        phoneNumber: assignee.phoneNumber,
         department: { connect: { name: assignee.departmentName } }
       },
       update: {
         firstName: assignee.firstName,
         lastName: assignee.lastName,
+        phoneNumber: assignee.phoneNumber,
         department: { connect: { name: assignee.departmentName } }
       }
     });
