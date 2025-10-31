@@ -1,7 +1,0 @@
-ResponseID,TaskID,ItemID,Response,Comment,Photo,UpdatedBy,UpdatedAt
-TR-001,WARD-ICU-CT-001-202406-icu.nurse@example.com,CI-001,1,,,
-TR-002,WARD-ICU-CT-001-202406-icu.nurse@example.com,CI-002,1,,,
-TR-003,WARD-ER-CT-001-202406-er.supervisor@example.com,CI-001,1,,,
-TR-004,WARD-ER-CT-001-202406-er.supervisor@example.com,CI-002,0,"Need new thermometer",,er.supervisor@example.com,2024-06-18T08:30:00Z
-TR-005,WARD-HK-CT-003-202406-hk.lead@example.com,CI-005,1,,,
-TR-006,WARD-HK-CT-003-202406-hk.lead@example.com,CI-006,0,"Supply order pending",photo://taskid/photo.jpg,hk.lead@example.com,2024-06-26T14:20:00Z

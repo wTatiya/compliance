@@ -1,6 +1,0 @@
-AssignmentRuleID,DepartmentTemplateID,AssigneeID,StartDate,EndDate,Active
-AR-001,DT-001,icu.nurse@example.com,2024-01-01,,TRUE
-AR-002,DT-002,er.supervisor@example.com,2024-01-01,,TRUE
-AR-003,DT-002,hk.lead@example.com,2024-01-01,,TRUE
-AR-004,DT-003,er.supervisor@example.com,2024-01-01,,TRUE
-AR-005,DT-004,hk.lead@example.com,2024-01-01,,TRUE

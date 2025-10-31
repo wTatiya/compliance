@@ -1,7 +1,0 @@
-ItemID,TemplateID,Prompt,Guidance,Order
-CI-001,CT-001,Medication refrigerator locked?,Ensure key or combination is controlled.,1
-CI-002,CT-001,Temperature log complete?,Review last 30 days.,2
-CI-003,CT-002,Defibrillator battery charged?,Check indicator lights.,1
-CI-004,CT-002,Crash cart seal intact?,Verify seal number.,2
-CI-005,CT-003,Floors cleaned within last shift?,Check cleaning log.,1
-CI-006,CT-003,Supply closets stocked?,Inspect PPE and cleaners.,2
