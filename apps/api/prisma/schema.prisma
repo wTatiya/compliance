@@ -1,0 +1,134 @@
+// Prisma schema for compliance domain data model
+// Datasource configuration expects DATABASE_URL environment variable
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+enum AssignmentStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  OVERDUE
+  @@map("assignment_status")
+}
+
+model Department {
+  id          String              @id @default(uuid()) @db.Uuid
+  name        String              @unique
+  description String?
+  assignees   Assignee[]
+  templates   ComplianceTemplate[]
+  createdAt   DateTime            @default(now())
+  updatedAt   DateTime            @updatedAt
+
+  @@map("departments")
+}
+
+model Assignee {
+  id           String         @id @default(uuid()) @db.Uuid
+  firstName    String
+  lastName     String
+  email        String         @unique
+  department   Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  departmentId String         @db.Uuid
+  roles        AssigneeRole[]
+  assignments  Assignment[]
+  auditLogs    AuditLog[]     @relation("AuditActor")
+  createdAt    DateTime       @default(now())
+  updatedAt    DateTime       @updatedAt
+
+  @@map("assignees")
+  @@index([departmentId])
+}
+
+model Role {
+  id          String         @id @default(uuid()) @db.Uuid
+  name        String         @unique
+  description String?
+  assignees   AssigneeRole[]
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+
+  @@map("roles")
+}
+
+model AssigneeRole {
+  assignee   Assignee @relation(fields: [assigneeId], references: [id], onDelete: Cascade)
+  assigneeId String   @db.Uuid
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+  roleId     String   @db.Uuid
+  assignedAt DateTime @default(now())
+
+  @@id([assigneeId, roleId])
+  @@index([roleId])
+  @@map("assignee_roles")
+}
+
+model ComplianceTemplate {
+  id           String            @id @default(uuid()) @db.Uuid
+  name         String
+  version      Int               @default(1)
+  description  String?
+  department   Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId String?           @db.Uuid
+  tasks        ComplianceTask[]
+  createdAt    DateTime          @default(now())
+  updatedAt    DateTime          @updatedAt
+
+  @@unique([name, version])
+  @@map("compliance_templates")
+  @@index([departmentId])
+}
+
+model ComplianceTask {
+  id           String        @id @default(uuid()) @db.Uuid
+  title        String
+  details      String?
+  dueDays      Int?
+  template     ComplianceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+  templateId   String        @db.Uuid
+  assignments  Assignment[]
+  auditLogs    AuditLog[]
+  createdAt    DateTime      @default(now())
+  updatedAt    DateTime      @updatedAt
+
+  @@map("compliance_tasks")
+  @@index([templateId])
+  @@unique([templateId, title])
+}
+
+model Assignment {
+  assignee    Assignee         @relation(fields: [assigneeId], references: [id], onDelete: Cascade)
+  assigneeId  String           @db.Uuid
+  task        ComplianceTask   @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  taskId      String           @db.Uuid
+  status      AssignmentStatus @default(PENDING)
+  assignedAt  DateTime         @default(now())
+  dueDate     DateTime?
+  completedAt DateTime?
+
+  @@id([assigneeId, taskId])
+  @@index([taskId])
+  @@map("assignments")
+}
+
+model AuditLog {
+  id        String        @id @default(uuid()) @db.Uuid
+  task      ComplianceTask? @relation(fields: [taskId], references: [id], onDelete: SetNull)
+  taskId    String?       @db.Uuid
+  actor     Assignee?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
+  actorId   String?       @db.Uuid
+  action    String
+  metadata  Json?
+  createdAt DateTime      @default(now())
+
+  @@map("audit_logs")
+  @@index([taskId])
+  @@index([actorId])
+}
