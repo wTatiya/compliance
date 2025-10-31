@@ -48,6 +48,7 @@
     "start:dev": "nest start --watch",
     "build": "nest build",
     "lint": "eslint \"src/**/*.{ts,tsx}\"",
+    "pretest": "npm run prisma:generate",
     "test": "jest",
     "format": "prettier --check \"src/**/*.{ts,tsx,json}\"",
     "prisma:generate": "prisma generate",

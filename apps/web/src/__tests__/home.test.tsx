@@ -4,9 +4,11 @@ import Home from '../pages/index';
 describe('Home', () => {
   it('renders the hero copy', () => {
     render(<Home />);
-    expect(screen.getByRole('heading', { name: /compliance document hub/i })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: /department compliance/i })).toBeInTheDocument();
     expect(
-      screen.getByText(/foundational next\.js application scaffolded to power the compliance/i)
+      screen.getByText(
+        /review department status summaries, keep track of assignee responsibilities, and quickly launch updates\./i
+      )
     ).toBeInTheDocument();
   });
 });
