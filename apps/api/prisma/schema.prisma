@@ -94,6 +94,9 @@ model ComplianceTemplate {
   description  String?
   department   Department?       @relation(fields: [departmentId], references: [id], onDelete: SetNull)
   departmentId String?           @db.Uuid
+  dueDay       Int               @default(1)
+  forms        Json?
+  requiredDocs Json?
   tasks        ComplianceTask[]
   createdAt    DateTime          @default(now())
   updatedAt    DateTime          @updatedAt
@@ -103,21 +106,37 @@ model ComplianceTemplate {
   @@index([departmentId])
 }
 
+enum ComplianceTaskStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+  SKIPPED
+  CLOSED
+
+  @@map("compliance_task_status")
+}
+
 model ComplianceTask {
   id           String        @id @default(uuid()) @db.Uuid
   title        String
   details      String?
-  dueDays      Int?
   template     ComplianceTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
   templateId   String        @db.Uuid
+  month        Int
+  year         Int
+  dueDate      DateTime
+  status       ComplianceTaskStatus @default(PENDING)
+  manualOverride Boolean          @default(false)
   assignments  Assignment[]
   auditLogs    AuditLog[]
+  generatedAt  DateTime      @default(now())
+  closedAt     DateTime?
   createdAt    DateTime      @default(now())
   updatedAt    DateTime      @updatedAt
 
   @@map("compliance_tasks")
   @@index([templateId])
-  @@unique([templateId, title])
+  @@unique([templateId, month, year])
 }
 
 model Assignment {

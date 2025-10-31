@@ -1,6 +1,18 @@
-import { AssignmentStatus, PrismaClient } from '@prisma/client';
+import { AssignmentStatus, ComplianceTaskStatus, PrismaClient } from '@prisma/client';
 
 const prisma = new PrismaClient();
+
+const now = new Date();
+const currentMonth = now.getUTCMonth() + 1;
+const currentYear = now.getUTCFullYear();
+
+function calculateDueDate(dueDay: number, month: number, year: number): Date {
+  const normalizedDay = Math.min(Math.max(Math.trunc(dueDay), 1), 31);
+  const lastDay = new Date(Date.UTC(year, month, 0)).getUTCDate();
+  const day = Math.min(normalizedDay, lastDay);
+
+  return new Date(Date.UTC(year, month - 1, day, 23, 59, 59, 999));
+}
 
 async function seedReferenceData() {
   const departments = [
@@ -95,42 +107,26 @@ async function seedReferenceData() {
 
   const templates = [
     {
-      name: 'ISO 27001 Readiness',
+      name: 'Monthly Access Review',
       version: 1,
-      description: 'Baseline tasks required for ISO 27001 certification readiness.',
+      description: 'Collect and validate system access reviews for critical applications.',
       departmentName: 'Information Security',
-      tasks: [
-        {
-          title: 'Review access control policy',
-          details: 'Validate that access control policies are current and approved.',
-          dueDays: 30
-        },
-        {
-          title: 'Conduct risk assessment workshop',
-          details: 'Facilitate annual risk assessment with stakeholders.',
-          dueDays: 45
-        }
-      ]
+      dueDay: 10,
+      forms: ['Access review checklist', 'Exception approval form'],
+      requiredDocs: ['access-review-report.pdf', 'exception-approvals.zip']
     },
     {
-      name: 'SOX Quarterly Controls',
+      name: 'Monthly Financial Controls',
       version: 1,
-      description: 'Quarterly key controls for SOX readiness and attestations.',
+      description: 'Compile financial evidence supporting SOX key controls.',
       departmentName: 'Finance Compliance',
-      tasks: [
-        {
-          title: 'Reconcile revenue recognition reports',
-          details: 'Ensure revenue recognition aligns with GAAP requirements.',
-          dueDays: 15
-        },
-        {
-          title: 'Review segregation of duties matrix',
-          details: 'Confirm no conflicts in critical finance system roles.',
-          dueDays: 20
-        }
-      ]
+      dueDay: 12,
+      forms: ['Control owner attestation', 'Variance analysis form'],
+      requiredDocs: ['ledger-export.csv', 'variance-explanations.docx']
     }
   ];
+
+  const generatedTasks: Record<string, { id: string; dueDay: number }> = {};
 
   for (const template of templates) {
     const createdTemplate = await prisma.complianceTemplate.upsert({
@@ -144,109 +140,116 @@ async function seedReferenceData() {
         name: template.name,
         version: template.version,
         description: template.description,
+        dueDay: template.dueDay,
+        forms: template.forms,
+        requiredDocs: template.requiredDocs,
         department: template.departmentName
           ? { connect: { name: template.departmentName } }
-          : undefined,
-        tasks: {
-          create: template.tasks.map((task) => ({
-            title: task.title,
-            details: task.details,
-            dueDays: task.dueDays ?? null
-          }))
-        }
+          : undefined
       },
       update: {
         description: template.description,
+        dueDay: template.dueDay,
+        forms: template.forms,
+        requiredDocs: template.requiredDocs,
         department: template.departmentName
           ? { connect: { name: template.departmentName } }
           : { disconnect: true }
       }
     });
 
-    for (const task of template.tasks) {
-      await prisma.complianceTask.upsert({
-        where: {
-          templateId_title: {
-            templateId: createdTemplate.id,
-            title: task.title
-          }
-        },
-        create: {
-          title: task.title,
-          details: task.details,
-          dueDays: task.dueDays ?? null,
-          template: { connect: { id: createdTemplate.id } }
-        },
-        update: {
-          details: task.details,
-          dueDays: task.dueDays ?? null
+    const dueDate = calculateDueDate(template.dueDay, currentMonth, currentYear);
+    const title = `${template.name} - ${dueDate.toLocaleString('en-US', {
+      month: 'long',
+      year: 'numeric'
+    })}`;
+
+    const createdTask = await prisma.complianceTask.upsert({
+      where: {
+        templateId_month_year: {
+          templateId: createdTemplate.id,
+          month: currentMonth,
+          year: currentYear
         }
-      });
-    }
+      },
+      create: {
+        title,
+        details: template.description,
+        month: currentMonth,
+        year: currentYear,
+        dueDate,
+        status: ComplianceTaskStatus.PENDING,
+        template: { connect: { id: createdTemplate.id } }
+      },
+      update: {
+        title,
+        details: template.description,
+        dueDate,
+        status: ComplianceTaskStatus.PENDING
+      }
+    });
+
+    generatedTasks[template.name] = { id: createdTask.id, dueDay: template.dueDay };
   }
 
-  const accessPolicyTask = await prisma.complianceTask.findFirst({
-    where: { title: 'Review access control policy' }
-  });
-  const revenueReconcileTask = await prisma.complianceTask.findFirst({
-    where: { title: 'Reconcile revenue recognition reports' }
-  });
   const ivy = await prisma.assignee.findUnique({ where: { email: 'ivy.nguyen@example.com' } });
   const noah = await prisma.assignee.findUnique({ where: { email: 'noah.wright@example.com' } });
 
-  if (accessPolicyTask && ivy) {
+  if (ivy && generatedTasks['Monthly Access Review']) {
+    const { id: taskId, dueDay } = generatedTasks['Monthly Access Review'];
+
     await prisma.assignment.upsert({
       where: {
         assigneeId_taskId: {
           assigneeId: ivy.id,
-          taskId: accessPolicyTask.id
+          taskId
         }
       },
       create: {
         assignee: { connect: { id: ivy.id } },
-        task: { connect: { id: accessPolicyTask.id } },
+        task: { connect: { id: taskId } },
         status: AssignmentStatus.IN_PROGRESS,
-        dueDate: new Date(Date.now() + 1000 * 60 * 60 * 24 * 20)
+        dueDate: calculateDueDate(dueDay, currentMonth, currentYear)
       },
       update: {}
     });
-  }
 
-  if (revenueReconcileTask && noah) {
-    await prisma.assignment.upsert({
-      where: {
-        assigneeId_taskId: {
-          assigneeId: noah.id,
-          taskId: revenueReconcileTask.id
-        }
-      },
-      create: {
-        assignee: { connect: { id: noah.id } },
-        task: { connect: { id: revenueReconcileTask.id } },
-        status: AssignmentStatus.PENDING
-      },
-      update: {}
-    });
-  }
-
-  if (accessPolicyTask && ivy) {
     const existingAuditLog = await prisma.auditLog.findFirst({
       where: {
-        taskId: accessPolicyTask.id,
-        action: 'Task assigned to Ivy Nguyen'
+        taskId,
+        action: 'task.assigned.seed.ivy'
       }
     });
 
     if (!existingAuditLog) {
       await prisma.auditLog.create({
         data: {
-          task: { connect: { id: accessPolicyTask.id } },
+          task: { connect: { id: taskId } },
           actor: { connect: { id: ivy.id } },
-          action: 'Task assigned to Ivy Nguyen',
-          metadata: { source: 'seed-script' }
+          action: 'task.assigned.seed.ivy',
+          metadata: { source: 'seed-script', assignee: ivy.email }
         }
       });
     }
+  }
+
+  if (noah && generatedTasks['Monthly Financial Controls']) {
+    const { id: taskId } = generatedTasks['Monthly Financial Controls'];
+
+    await prisma.assignment.upsert({
+      where: {
+        assigneeId_taskId: {
+          assigneeId: noah.id,
+          taskId
+        }
+      },
+      create: {
+        assignee: { connect: { id: noah.id } },
+        task: { connect: { id: taskId } },
+        status: AssignmentStatus.PENDING
+      },
+      update: {}
+    });
   }
 }
 
