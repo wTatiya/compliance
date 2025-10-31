@@ -1,0 +1,24 @@
+{
+  "name": "compliance-monorepo",
+  "version": "0.1.0",
+  "private": true,
+  "workspaces": [
+    "apps/web",
+    "apps/api"
+  ],
+  "scripts": {
+    "build": "npm run build --workspaces",
+    "clean": "rimraf node_modules && npm run clean --workspaces --if-present",
+    "format": "npm run format --workspaces",
+    "lint": "npm run lint --workspaces",
+    "test": "npm run test --workspaces"
+  },
+  "devDependencies": {
+    "lint-staged": "^15.2.5",
+    "prettier": "^3.2.5",
+    "rimraf": "^5.0.5"
+  },
+  "lint-staged": {
+    "*.{js,jsx,ts,tsx,json,md}": "prettier --write"
+  }
+}
