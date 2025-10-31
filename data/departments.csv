@@ -1,0 +1,4 @@
+DepartmentID,Name,Category,Active
+WARD-ICU,Intensive Care Unit,Clinical,TRUE
+WARD-ER,Emergency Room,Clinical,TRUE
+WARD-HK,Housekeeping,Support,TRUE

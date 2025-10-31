@@ -1,0 +1,5 @@
+AssigneeID,FullName,PreferredLanguage,Role,Active
+icu.nurse@example.com,Ana Reyes,English,Assignee,TRUE
+hk.lead@example.com,Samir Patel,English,Assignee,TRUE
+er.supervisor@example.com,Lina Gomez,English,DepartmentManager,TRUE
+compliance.manager@example.com,Ravi Shah,English,ComplianceAdmin,TRUE

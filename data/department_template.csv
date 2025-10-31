@@ -1,0 +1,5 @@
+DepartmentTemplateID,DepartmentID,TemplateID,DefaultAssigneeID
+DT-001,WARD-ICU,CT-001,icu.nurse@example.com
+DT-002,WARD-ER,CT-001,er.supervisor@example.com
+DT-003,WARD-ER,CT-002,er.supervisor@example.com
+DT-004,WARD-HK,CT-003,hk.lead@example.com

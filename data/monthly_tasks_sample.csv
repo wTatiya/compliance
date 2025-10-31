@@ -1,0 +1,5 @@
+TaskID,DepartmentID,TemplateID,AssigneeID,Month,Status,DueDate,SubmittedAt,Score,ExportPDF,ExportXLSX,ExportLastRun
+WARD-ICU-CT-001-202406-icu.nurse@example.com,WARD-ICU,CT-001,icu.nurse@example.com,2024-06-01,Submitted,2024-06-30,2024-06-28T09:15:00Z,1.0,FALSE,FALSE,
+WARD-ER-CT-001-202406-er.supervisor@example.com,WARD-ER,CT-001,er.supervisor@example.com,2024-06-01,In Progress,2024-06-30,,0.5,FALSE,TRUE,2024-06-20T12:00:00Z
+WARD-ER-CT-002-202406-hk.lead@example.com,WARD-ER,CT-002,hk.lead@example.com,2024-06-01,Not Started,2024-06-30,,0.0,FALSE,FALSE,
+WARD-HK-CT-003-202406-hk.lead@example.com,WARD-HK,CT-003,hk.lead@example.com,2024-06-01,Submitted,2024-06-30,2024-06-27T16:45:00Z,0.5,TRUE,FALSE,2024-06-27T17:00:00Z
