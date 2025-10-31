@@ -8,6 +8,8 @@ import { AuthModule } from './auth/auth.module';
 import { AssignmentsModule } from './assignments/assignments.module';
 import { TemplatesModule } from './templates/templates.module';
 import { ComplianceTasksModule } from './compliance-tasks/compliance-tasks.module';
+import { DashboardModule } from './dashboard/dashboard.module';
+import { ReportsModule } from './reports/reports.module';
 
 @Module({
   imports: [
@@ -20,7 +22,9 @@ import { ComplianceTasksModule } from './compliance-tasks/compliance-tasks.modul
     AuthModule,
     AssignmentsModule,
     TemplatesModule,
-    ComplianceTasksModule
+    ComplianceTasksModule,
+    DashboardModule,
+    ReportsModule
   ],
   controllers: [AppController],
   providers: [AppService]
