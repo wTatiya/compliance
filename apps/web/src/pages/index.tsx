@@ -520,7 +520,7 @@ export default function DepartmentOverview() {
             statusCounts.COMPLETED += 1;
             break;
           case 'blocked':
-            statusCounts.CLOSED += 1;
+            statusCounts.IN_PROGRESS += 1;
             break;
           case 'atRisk':
             statusCounts.IN_PROGRESS += 1;
@@ -572,7 +572,7 @@ export default function DepartmentOverview() {
             trend.closed += 1;
             break;
           case 'blocked':
-            trend.closed += 1;
+            trend.inProgress += 1;
             break;
           case 'atRisk':
             trend.inProgress += 1;
