@@ -1,4 +1,14 @@
-import { ChangeEvent, FormEvent, ReactNode, useMemo, useState } from 'react';
+import {
+  ChangeEvent,
+  ChangeEventHandler,
+  FormEvent,
+  FormEventHandler,
+  KeyboardEvent,
+  ReactNode,
+  useEffect,
+  useMemo,
+  useState
+} from 'react';
 import Head from 'next/head';
 
 type Role = 'Owner' | 'Reviewer' | 'Observer';
@@ -29,6 +39,19 @@ type DepartmentRecord = {
   description: string;
   statusSummary: StatusSummary;
   assignees: DepartmentAssignee[];
+};
+
+type TaskStatus = 'onTrack' | 'atRisk' | 'blocked' | 'completed';
+
+type Task = {
+  id: string;
+  departmentId: string;
+  title: string;
+  summary: string;
+  dueDate: string;
+  progress: number;
+  status: TaskStatus;
+  icon: string;
 };
 
 type DepartmentFormState = {
@@ -103,12 +126,114 @@ const INITIAL_DEPARTMENTS: DepartmentRecord[] = [
   }
 ];
 
+const TASKS_DATA: Task[] = [
+  {
+    id: 'task-01',
+    departmentId: 'dept-01',
+    title: 'Badge access sweep',
+    summary: 'Confirm that high-risk system badges are current.',
+    dueDate: '2024-07-18',
+    progress: 70,
+    status: 'onTrack',
+    icon: '🛡️'
+  },
+  {
+    id: 'task-02',
+    departmentId: 'dept-01',
+    title: 'Data vault check',
+    summary: 'Spot-check overnight backups for gaps.',
+    dueDate: '2024-07-10',
+    progress: 45,
+    status: 'atRisk',
+    icon: '💾'
+  },
+  {
+    id: 'task-03',
+    departmentId: 'dept-02',
+    title: 'Cold chain log upload',
+    summary: 'Gather freezer temp slips for audit upload.',
+    dueDate: '2024-07-08',
+    progress: 30,
+    status: 'blocked',
+    icon: '🧊'
+  },
+  {
+    id: 'task-04',
+    departmentId: 'dept-02',
+    title: 'DEA filing review',
+    summary: 'Quick review before the monthly filing.',
+    dueDate: '2024-07-20',
+    progress: 85,
+    status: 'onTrack',
+    icon: '📦'
+  },
+  {
+    id: 'task-05',
+    departmentId: 'dept-03',
+    title: 'Tray trace upload',
+    summary: 'Add implant tracking slips for last week.',
+    dueDate: '2024-07-12',
+    progress: 60,
+    status: 'onTrack',
+    icon: '🗂️'
+  },
+  {
+    id: 'task-06',
+    departmentId: 'dept-03',
+    title: 'Sterilizer reset',
+    summary: 'Flag the unit waiting on vendor sign-off.',
+    dueDate: '2024-07-05',
+    progress: 100,
+    status: 'completed',
+    icon: '🧼'
+  }
+];
+
+const TASK_STATUS_META: Record<
+  TaskStatus,
+  {
+    label: string;
+    badgeClass: string;
+    progressClass: string;
+    icon: string;
+  }
+> = {
+  onTrack: {
+    label: 'On track',
+    badgeClass: 'bg-emerald-100 text-emerald-800',
+    progressClass: 'bg-emerald-500',
+    icon: '✅'
+  },
+  atRisk: {
+    label: 'At risk',
+    badgeClass: 'bg-amber-100 text-amber-800',
+    progressClass: 'bg-amber-500',
+    icon: '⚠️'
+  },
+  blocked: {
+    label: 'Blocked',
+    badgeClass: 'bg-rose-100 text-rose-800',
+    progressClass: 'bg-rose-500',
+    icon: '⛔'
+  },
+  completed: {
+    label: 'Complete',
+    badgeClass: 'bg-slate-200 text-slate-800',
+    progressClass: 'bg-slate-500',
+    icon: '🏁'
+  }
+};
+
 export default function DepartmentOverview() {
   const [departments, setDepartments] = useState<DepartmentRecord[]>(INITIAL_DEPARTMENTS);
   const [searchTerm, setSearchTerm] = useState('');
   const [wardFilter, setWardFilter] = useState('');
   const [assigneeFilter, setAssigneeFilter] = useState('');
   const [statusFilter, setStatusFilter] = useState('');
+
+  const [tasks, setTasks] = useState<Task[]>([]);
+  const [isLoadingTasks, setIsLoadingTasks] = useState(true);
+  const [focusedTaskId, setFocusedTaskId] = useState<string | null>(null);
 
   const [isAddOpen, setIsAddOpen] = useState(false);
   const [isEditOpen, setIsEditOpen] = useState(false);
@@ -127,6 +252,15 @@ export default function DepartmentOverview() {
     [activeDepartmentId, departments]
   );
 
+  useEffect(() => {
+    const timeout = window.setTimeout(() => {
+      setTasks(TASKS_DATA);
+      setIsLoadingTasks(false);
+    }, 300);
+
+    return () => window.clearTimeout(timeout);
+  }, []);
+
   const filteredDepartments = useMemo(() => {
     return departments.filter((department) => {
       const matchesSearch = department.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -141,6 +275,28 @@ export default function DepartmentOverview() {
   }, [departments, searchTerm, wardFilter, assigneeFilter, statusFilter]);
 
   const dominantStatus = activeDepartment ? getDominantStatus(activeDepartment.statusSummary) : '';
+
+  const tasksByDepartment = useMemo(
+    () =>
+      tasks.reduce<Record<string, Task[]>>((acc, task) => {
+        if (!acc[task.departmentId]) {
+          acc[task.departmentId] = [];
+        }
+
+        acc[task.departmentId].push(task);
+        return acc;
+      }, {}),
+    [tasks]
+  );
+
+  const handleTaskFocus = (taskId: string) => {
+    setFocusedTaskId((prev) => (prev === taskId ? null : taskId));
+  };
+
+  const handleTaskAction = (action: 'view' | 'upload' | 'complete', task: Task) => {
+    setFocusedTaskId(task.id);
+    console.info(`${action} task`, task.title);
+  };
 
   const handleOpenAddDepartment = () => {
     setDepartmentForm(defaultDepartmentForm);
@@ -403,6 +559,79 @@ export default function DepartmentOverview() {
             </div>
           </section>
 
+          <section aria-label="Assigned tasks" className="grid gap-6 rounded-2xl bg-white p-6 shadow-md">
+            <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+              <div className="space-y-1">
+                <h2 className="flex items-center gap-2 text-2xl font-semibold text-slate-900">
+                  <span aria-hidden="true" className="text-emerald-500">
+                    📋
+                  </span>
+                  Assigned tasks
+                </h2>
+                <p className="text-sm text-slate-600 sm:text-base">
+                  Quick-glance cards by department help teams act fast while on the move.
+                </p>
+              </div>
+              <div className="flex items-center gap-2 rounded-full bg-slate-100 px-4 py-2 text-sm font-semibold text-slate-700">
+                <span aria-hidden="true">🧑‍🤝‍🧑</span>
+                {tasks.length} tasks
+              </div>
+            </header>
+
+            {isLoadingTasks ? (
+              <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+                {[0, 1, 2].map((placeholder) => (
+                  <div
+                    key={placeholder}
+                    className="h-44 animate-pulse rounded-2xl border border-slate-200 bg-slate-100"
+                    aria-hidden="true"
+                  />
+                ))}
+              </div>
+            ) : tasks.length === 0 ? (
+              <p className="rounded-xl border border-dashed border-slate-300 bg-slate-50 p-6 text-center text-sm text-slate-500">
+                No tasks assigned yet.
+              </p>
+            ) : (
+              <div className="grid gap-8">
+                {departments.map((department) => {
+                  const departmentTasks = tasksByDepartment[department.id] ?? [];
+                  if (departmentTasks.length === 0) {
+                    return null;
+                  }
+
+                  return (
+                    <div key={department.id} className="space-y-4">
+                      <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
+                        <h3 className="flex items-center gap-2 text-lg font-semibold text-slate-800">
+                          <span aria-hidden="true">🏥</span>
+                          {department.name}
+                        </h3>
+                        <span className="inline-flex items-center gap-2 rounded-full bg-slate-900 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-white">
+                          <span aria-hidden="true">📍</span>
+                          {department.ward} ward
+                        </span>
+                      </div>
+                      <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+                        {departmentTasks.map((task) => (
+                          <TaskCard
+                            key={task.id}
+                            task={task}
+                            isFocused={focusedTaskId === task.id}
+                            onFocus={() => handleTaskFocus(task.id)}
+                            onView={() => handleTaskAction('view', task)}
+                            onUpload={() => handleTaskAction('upload', task)}
+                            onComplete={() => handleTaskAction('complete', task)}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+
           <section aria-live="polite" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
             {filteredDepartments.length === 0 ? (
               <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
@@ -586,6 +815,135 @@ export default function DepartmentOverview() {
   );
 }
 
+type TaskCardProps = {
+  task: Task;
+  isFocused: boolean;
+  onFocus: () => void;
+  onView: () => void;
+  onUpload: () => void;
+  onComplete: () => void;
+};
+
+function TaskCard({ task, isFocused, onFocus, onView, onUpload, onComplete }: TaskCardProps) {
+  const statusMeta = TASK_STATUS_META[task.status];
+
+  const handleKeyDown = (event: KeyboardEvent<HTMLElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault();
+      onFocus();
+    }
+  };
+
+  return (
+    <article
+      role="button"
+      tabIndex={0}
+      onClick={onFocus}
+      onKeyDown={handleKeyDown}
+      aria-pressed={isFocused}
+      className={`flex h-full flex-col gap-4 rounded-2xl border border-slate-200 bg-white p-5 text-left shadow-sm transition focus:outline-none focus-visible:ring-2 focus-visible:ring-offset-2 ${
+        isFocused ? 'ring-emerald-500 ring-offset-2' : 'hover:-translate-y-0.5 hover:shadow-md'
+      }`}
+    >
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-center gap-3">
+          <span
+            aria-hidden="true"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-emerald-50 text-2xl"
+          >
+            {task.icon}
+          </span>
+          <div className="space-y-1">
+            <h3 className="text-lg font-semibold text-slate-900">{task.title}</h3>
+            <p className="text-sm text-slate-600">{task.summary}</p>
+          </div>
+        </div>
+        <span
+          className={`inline-flex items-center gap-2 rounded-full px-3 py-1 text-xs font-semibold uppercase tracking-wide ${statusMeta.badgeClass}`}
+        >
+          <span aria-hidden="true">{statusMeta.icon}</span>
+          {statusMeta.label}
+        </span>
+      </div>
+
+      <div className="flex flex-wrap items-center gap-3 text-sm font-semibold text-slate-700">
+        <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">
+          <span aria-hidden="true">⏰</span>
+          Due {formatDueDate(task.dueDate)}
+        </span>
+        <span className="inline-flex items-center gap-2 rounded-full bg-slate-100 px-3 py-1">
+          <span aria-hidden="true">📊</span>
+          {task.progress}%
+        </span>
+      </div>
+
+      <ProgressBar value={task.progress} accentClass={statusMeta.progressClass} />
+
+      <div className="flex flex-wrap gap-2 pt-1">
+        <CardActionButton label="View details" icon="👁️" tone="neutral" onClick={onView} />
+        <CardActionButton label="Upload docs" icon="⬆️" tone="highlight" onClick={onUpload} />
+        <CardActionButton label="Mark complete" icon="✅" tone="success" onClick={onComplete} />
+      </div>
+    </article>
+  );
+}
+
+type CardActionButtonTone = 'neutral' | 'highlight' | 'success';
+
+type CardActionButtonProps = {
+  label: string;
+  icon: string;
+  tone: CardActionButtonTone;
+  onClick: () => void;
+};
+
+function CardActionButton({ label, icon, tone, onClick }: CardActionButtonProps) {
+  const toneClass: Record<CardActionButtonTone, string> = {
+    neutral: 'bg-slate-900 text-white hover:bg-slate-700',
+    highlight: 'bg-amber-500 text-white hover:bg-amber-400',
+    success: 'bg-emerald-600 text-white hover:bg-emerald-500'
+  };
+
+  return (
+    <button
+      type="button"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      className={`inline-flex items-center gap-2 rounded-full px-4 py-2 text-sm font-semibold transition focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500 ${toneClass[tone]}`}
+    >
+      <span aria-hidden="true">{icon}</span>
+      {label}
+    </button>
+  );
+}
+
+type ProgressBarProps = {
+  value: number;
+  accentClass: string;
+};
+
+function ProgressBar({ value, accentClass }: ProgressBarProps) {
+  return (
+    <div className="space-y-2" aria-label="Task progress">
+      <div
+        className="h-2 w-full rounded-full bg-slate-200"
+        role="progressbar"
+        aria-valuenow={value}
+        aria-valuemin={0}
+        aria-valuemax={100}
+      >
+        <div className={`h-full rounded-full ${accentClass}`} style={{ width: `${Math.min(100, Math.max(0, value))}%` }} />
+      </div>
+    </div>
+  );
+}
+
+function formatDueDate(value: string) {
+  return new Intl.DateTimeFormat('en-US', { month: 'short', day: 'numeric' }).format(new Date(value));
+}
+
 type DialogProps = {
   title: string;
   description: string;
@@ -621,8 +979,8 @@ function Dialog({ title, description, onClose, children, variant }: DialogProps)
 
 type DepartmentFormProps = {
   formState: DepartmentFormState;
-  onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
-  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  onChange: ChangeEventHandler<HTMLInputElement | HTMLTextAreaElement>;
+  onSubmit: FormEventHandler<HTMLFormElement>;
   submitLabel: string;
   onCancel: () => void;
 };
@@ -715,7 +1073,7 @@ type NumberFieldProps = {
   name: keyof Pick<DepartmentFormState, 'onTrack' | 'atRisk' | 'blocked' | 'completed'>;
   label: string;
   value: number;
-  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+  onChange: ChangeEventHandler<HTMLInputElement>;
 };
 
 function NumberField({ id, name, label, value, onChange }: NumberFieldProps) {
