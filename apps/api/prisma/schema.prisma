@@ -36,6 +36,7 @@ model Assignee {
   firstName    String
   lastName     String
   email        String         @unique
+  phoneNumber  String?
   passwordHash String
   department   Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   departmentId String         @db.Uuid

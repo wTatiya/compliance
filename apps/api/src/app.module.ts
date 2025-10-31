@@ -10,6 +10,7 @@ import { TemplatesModule } from './templates/templates.module';
 import { ComplianceTasksModule } from './compliance-tasks/compliance-tasks.module';
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
+import { NotificationsModule } from './notifications/notifications.module';
 
 @Module({
   imports: [
@@ -24,7 +25,8 @@ import { ReportsModule } from './reports/reports.module';
     TemplatesModule,
     ComplianceTasksModule,
     DashboardModule,
-    ReportsModule
+    ReportsModule,
+    NotificationsModule
   ],
   controllers: [AppController],
   providers: [AppService]
