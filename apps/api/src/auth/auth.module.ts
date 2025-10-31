@@ -6,6 +6,7 @@ import { AuthService } from './auth.service';
 import { JwtStrategy } from './jwt.strategy';
 import { JwtAuthGuard } from './jwt-auth.guard';
 import { PrismaModule } from '../prisma/prisma.module';
+import { AuditLogsModule } from '../audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -21,7 +22,8 @@ import { PrismaModule } from '../prisma/prisma.module';
           expiresIn: configService.get<string | number>('JWT_EXPIRES_IN', '1h')
         }
       })
-    })
+    }),
+    AuditLogsModule
   ],
   providers: [AuthService, JwtStrategy, JwtAuthGuard],
   exports: [AuthService, JwtAuthGuard]

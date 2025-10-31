@@ -5,6 +5,7 @@ import { randomUUID } from 'crypto';
 import * as bcrypt from 'bcryptjs';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../authorization/roles.enum';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 type AssigneeWithSecurity = {
   id: string;
@@ -48,7 +49,8 @@ export class AuthService {
   constructor(
     private readonly jwtService: JwtService,
     private readonly prisma: PrismaService,
-    private readonly configService: ConfigService
+    private readonly configService: ConfigService,
+    private readonly auditLogs: AuditLogsService
   ) {
     const raw = this.configService.get<string | number>('JWT_EXPIRES_IN', 3600);
     this.defaultSessionSeconds = typeof raw === 'string' ? this.parseExpires(raw) : Number(raw);
@@ -68,12 +70,39 @@ export class AuthService {
     })) as AssigneeWithSecurity | null;
 
     if (!assignee || !assignee.passwordHash) {
+      await this.auditLogs.logSensitiveAction('auth.login.failure', {
+        metadata: {
+          email,
+          reason: 'not_found'
+        },
+        entities: [
+          {
+            type: 'user',
+            id: assignee?.id ?? null,
+            email
+          }
+        ]
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const isValidPassword = await bcrypt.compare(password, assignee.passwordHash);
 
     if (!isValidPassword) {
+      await this.auditLogs.logSensitiveAction('auth.login.failure', {
+        actorId: assignee.id,
+        metadata: {
+          email,
+          reason: 'invalid_password'
+        },
+        entities: [
+          {
+            type: 'user',
+            id: assignee.id,
+            email
+          }
+        ]
+      });
       throw new UnauthorizedException('Invalid credentials');
     }
 
@@ -85,6 +114,24 @@ export class AuthService {
     };
 
     const session = await this.createSession(user);
+
+    await this.auditLogs.logSensitiveAction('auth.login.success', {
+      actorId: user.id,
+      metadata: {
+        email,
+        roles: user.roles,
+        departmentIds: user.departmentIds
+      },
+      entities: [
+        {
+          type: 'user',
+          id: user.id,
+          email,
+          roles: user.roles,
+          departmentIds: user.departmentIds
+        }
+      ]
+    });
 
     return { user, session };
   }

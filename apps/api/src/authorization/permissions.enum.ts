@@ -4,5 +4,6 @@ export enum Permission {
   ViewDepartments = 'departments:view',
   ViewTemplates = 'templates:view',
   ManageTemplates = 'templates:manage',
-  ManageComplianceTasks = 'complianceTasks:manage'
+  ManageComplianceTasks = 'complianceTasks:manage',
+  ReviewAuditLogs = 'auditLogs:review'
 }

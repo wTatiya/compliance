@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { Prisma, ComplianceTask, ComplianceTaskStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 export interface TemplatePayload {
   name: string;
@@ -27,9 +28,13 @@ type GenerateResult = {
   updated: boolean;
 };
 
+interface TemplateOperationOptions {
+  actorId?: string | null;
+}
+
 @Injectable()
 export class TemplatesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly auditLogs: AuditLogsService) {}
 
   async listTemplates(departmentId: string) {
     return this.prisma.complianceTemplate.findMany({
@@ -56,27 +61,85 @@ export class TemplatesService {
     return template;
   }
 
-  async createTemplate(departmentId: string, payload: TemplatePayload) {
+  async createTemplate(departmentId: string, payload: TemplatePayload, options: TemplateOperationOptions = {}) {
     const data = this.buildTemplateCreateData(payload, departmentId);
 
-    return this.prisma.complianceTemplate.create({ data });
+    const template = await this.prisma.complianceTemplate.create({ data });
+
+    await this.auditLogs.logSensitiveAction('template.created', {
+      actorId: options.actorId ?? null,
+      departmentId,
+      metadata: {
+        templateId: template.id,
+        payload
+      },
+      entities: [
+        {
+          type: 'template',
+          id: template.id,
+          name: template.name
+        }
+      ]
+    });
+
+    return template;
   }
 
-  async updateTemplate(departmentId: string, templateId: string, payload: TemplateUpdatePayload) {
-    await this.ensureTemplateExists(departmentId, templateId);
+  async updateTemplate(
+    departmentId: string,
+    templateId: string,
+    payload: TemplateUpdatePayload,
+    options: TemplateOperationOptions = {}
+  ) {
+    const existing = await this.getTemplate(departmentId, templateId);
 
     const data = this.buildTemplateUpdateData(payload);
 
-    return this.prisma.complianceTemplate.update({
+    const updated = await this.prisma.complianceTemplate.update({
       where: { id: templateId },
       data
     });
+
+    await this.auditLogs.logSensitiveAction('template.updated', {
+      actorId: options.actorId ?? null,
+      departmentId,
+      metadata: {
+        templateId,
+        changes: payload
+      },
+      entities: [
+        {
+          type: 'template',
+          id: templateId,
+          name: updated.name,
+          previousName: existing.name
+        }
+      ]
+    });
+
+    return updated;
   }
 
-  async deleteTemplate(departmentId: string, templateId: string) {
-    await this.ensureTemplateExists(departmentId, templateId);
+  async deleteTemplate(departmentId: string, templateId: string, options: TemplateOperationOptions = {}) {
+    const existing = await this.getTemplate(departmentId, templateId);
 
     await this.prisma.complianceTemplate.delete({ where: { id: templateId } });
+
+    await this.auditLogs.logSensitiveAction('template.deleted', {
+      actorId: options.actorId ?? null,
+      departmentId,
+      metadata: {
+        templateId,
+        name: existing.name
+      },
+      entities: [
+        {
+          type: 'template',
+          id: templateId,
+          name: existing.name
+        }
+      ]
+    });
 
     return { success: true };
   }
@@ -123,10 +186,25 @@ export class TemplatesService {
           }
         });
 
-        await this.createAuditLog(tx, updated.id, options.actorId, 'task.regenerated', metadata);
+      await this.auditLogs.logSensitiveAction('task.regenerated', {
+        actorId: options.actorId ?? null,
+        departmentId: template.departmentId ?? undefined,
+        taskId: updated.id,
+        metadata,
+        entities: [
+          {
+            type: 'complianceTask',
+            id: updated.id,
+            templateId: template.id,
+            month,
+            year
+          }
+        ],
+        transaction: tx
+      });
 
-        return { task: updated, created: false, updated: true };
-      }
+      return { task: updated, created: false, updated: true };
+    }
 
       const created = await tx.complianceTask.create({
         data: {
@@ -141,29 +219,37 @@ export class TemplatesService {
         }
       });
 
-      await this.createAuditLog(tx, created.id, options.actorId, 'task.generated', metadata);
+      await this.auditLogs.logSensitiveAction('task.generated', {
+        actorId: options.actorId ?? null,
+        departmentId: template.departmentId ?? undefined,
+        taskId: created.id,
+        metadata,
+        entities: [
+          {
+            type: 'complianceTask',
+            id: created.id,
+            templateId: template.id,
+            month,
+            year
+          }
+        ],
+        transaction: tx
+      });
 
       return { task: created, created: true, updated: false };
     });
   }
 
   async recordAutomationRun(metadata: Record<string, unknown>) {
-    await this.prisma.auditLog.create({
-      data: {
-        action: 'automation.tasks.monthly',
-        metadata
-      }
+    await this.auditLogs.logSensitiveAction('automation.tasks.monthly', {
+      metadata,
+      entities: [
+        {
+          type: 'automation',
+          name: 'monthly-task-generation'
+        }
+      ]
     });
-  }
-
-  private async ensureTemplateExists(departmentId: string, templateId: string) {
-    const exists = await this.prisma.complianceTemplate.count({
-      where: { id: templateId, departmentId }
-    });
-
-    if (!exists) {
-      throw new NotFoundException('Template not found');
-    }
   }
 
   private buildTemplateCreateData(
@@ -249,20 +335,4 @@ export class TemplatesService {
     return cleaned.length > 0 ? cleaned : null;
   }
 
-  private async createAuditLog(
-    tx: Prisma.TransactionClient,
-    taskId: string,
-    actorId: string | null | undefined,
-    action: string,
-    metadata: Record<string, unknown>
-  ) {
-    await tx.auditLog.create({
-      data: {
-        task: { connect: { id: taskId } },
-        actor: actorId ? { connect: { id: actorId } } : undefined,
-        action,
-        metadata
-      }
-    });
-  }
 }

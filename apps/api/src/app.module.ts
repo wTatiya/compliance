@@ -11,6 +11,7 @@ import { ComplianceTasksModule } from './compliance-tasks/compliance-tasks.modul
 import { DashboardModule } from './dashboard/dashboard.module';
 import { ReportsModule } from './reports/reports.module';
 import { NotificationsModule } from './notifications/notifications.module';
+import { AuditLogsModule } from './audit-logs/audit-logs.module';
 
 @Module({
   imports: [
@@ -26,7 +27,8 @@ import { NotificationsModule } from './notifications/notifications.module';
     ComplianceTasksModule,
     DashboardModule,
     ReportsModule,
-    NotificationsModule
+    NotificationsModule,
+    AuditLogsModule
   ],
   controllers: [AppController],
   providers: [AppService]
