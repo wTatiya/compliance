@@ -1,699 +1,810 @@
-import { FormEvent, useEffect, useMemo, useState } from 'react';
+import { ChangeEvent, FormEvent, ReactNode, useMemo, useState } from 'react';
 import Head from 'next/head';
 
-type TemplateRecord = {
+type Role = 'Owner' | 'Reviewer' | 'Observer';
+
+type DirectoryAssignee = {
   id: string;
   name: string;
-  description?: string | null;
-  dueDay: number;
-  forms?: string[] | null;
-  requiredDocs?: string[] | null;
-  createdAt?: string;
-  updatedAt?: string;
+  email: string;
+  wards: string[];
 };
 
-type TaskRecord = {
+type DepartmentAssignee = {
   id: string;
-  title: string;
-  details?: string | null;
-  month: number;
-  year: number;
-  dueDate: string;
-  status: string;
-  manualOverride: boolean;
-  template: Pick<TemplateRecord, 'id' | 'name' | 'dueDay' | 'forms' | 'requiredDocs'>;
+  role: Role;
 };
 
-type ApiError = {
-  message?: string;
-  error?: string;
+type StatusSummary = {
+  onTrack: number;
+  atRisk: number;
+  blocked: number;
+  completed: number;
 };
 
-const API_BASE_URL = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:3333';
+type DepartmentRecord = {
+  id: string;
+  name: string;
+  ward: string;
+  description: string;
+  statusSummary: StatusSummary;
+  assignees: DepartmentAssignee[];
+};
 
-const defaultTemplate = {
+type DepartmentFormState = {
+  name: string;
+  ward: string;
+  description: string;
+  onTrack: number;
+  atRisk: number;
+  blocked: number;
+  completed: number;
+};
+
+type AssignmentDraft = Record<
+  string,
+  {
+    active: boolean;
+    role: Role;
+  }
+>;
+
+const defaultDepartmentForm: DepartmentFormState = {
   name: '',
+  ward: '',
   description: '',
-  dueDay: 1,
-  forms: '',
-  requiredDocs: ''
+  onTrack: 0,
+  atRisk: 0,
+  blocked: 0,
+  completed: 0
 };
 
-export default function Home() {
-  const [departmentId, setDepartmentId] = useState('');
-  const [templates, setTemplates] = useState<TemplateRecord[]>([]);
-  const [tasks, setTasks] = useState<TaskRecord[]>([]);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [message, setMessage] = useState<string | null>(null);
-  const [newTemplate, setNewTemplate] = useState(defaultTemplate);
-  const [editingTemplateId, setEditingTemplateId] = useState<string | null>(null);
-  const [editingTemplate, setEditingTemplate] = useState(defaultTemplate);
+const DIRECTORY: DirectoryAssignee[] = [
+  { id: 'a-1', name: 'Alex Morgan', email: 'alex.morgan@example.com', wards: ['North', 'Central'] },
+  { id: 'a-2', name: 'Priya Desai', email: 'priya.desai@example.com', wards: ['Central'] },
+  { id: 'a-3', name: 'Mateo Rodriguez', email: 'mateo.rodriguez@example.com', wards: ['South', 'Central'] },
+  { id: 'a-4', name: 'Amina Hassan', email: 'amina.hassan@example.com', wards: ['North'] },
+  { id: 'a-5', name: 'Jordan Lee', email: 'jordan.lee@example.com', wards: ['South'] }
+];
 
-  const hasDepartment = useMemo(() => departmentId.trim().length > 0, [departmentId]);
+const INITIAL_DEPARTMENTS: DepartmentRecord[] = [
+  {
+    id: 'dept-01',
+    name: 'Information Security',
+    ward: 'North',
+    description: 'Access certification, data protection, and privileged account reviews across the hospital.',
+    statusSummary: { onTrack: 7, atRisk: 2, blocked: 1, completed: 12 },
+    assignees: [
+      { id: 'a-1', role: 'Owner' },
+      { id: 'a-4', role: 'Reviewer' }
+    ]
+  },
+  {
+    id: 'dept-02',
+    name: 'Pharmacy Compliance',
+    ward: 'Central',
+    description: 'Medication dispensing controls, cold chain validation, and DEA reporting oversight.',
+    statusSummary: { onTrack: 5, atRisk: 1, blocked: 0, completed: 9 },
+    assignees: [
+      { id: 'a-2', role: 'Owner' },
+      { id: 'a-3', role: 'Reviewer' }
+    ]
+  },
+  {
+    id: 'dept-03',
+    name: 'Surgical Services',
+    ward: 'South',
+    description: 'OR readiness, sterilization cycles, and implant traceability for surgical teams.',
+    statusSummary: { onTrack: 3, atRisk: 1, blocked: 1, completed: 6 },
+    assignees: [
+      { id: 'a-3', role: 'Owner' },
+      { id: 'a-5', role: 'Observer' }
+    ]
+  }
+];
 
-  useEffect(() => {
-    setTemplates([]);
-    setTasks([]);
-    setMessage(null);
-    setError(null);
-  }, [departmentId]);
+export default function DepartmentOverview() {
+  const [departments, setDepartments] = useState<DepartmentRecord[]>(INITIAL_DEPARTMENTS);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [wardFilter, setWardFilter] = useState('');
+  const [assigneeFilter, setAssigneeFilter] = useState('');
+  const [statusFilter, setStatusFilter] = useState('');
 
-  const loadData = async () => {
-    if (!hasDepartment) {
-      setError('Enter a department ID to load templates and tasks.');
-      return;
-    }
+  const [isAddOpen, setIsAddOpen] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isAssignmentOpen, setIsAssignmentOpen] = useState(false);
 
-    try {
-      setLoading(true);
-      setError(null);
-      await Promise.all([refreshTemplates(departmentId), refreshTasks(departmentId)]);
-      setMessage('Department data loaded.');
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
+  const [departmentForm, setDepartmentForm] = useState<DepartmentFormState>(defaultDepartmentForm);
+  const [activeDepartmentId, setActiveDepartmentId] = useState<string | null>(null);
+  const [assignmentDraft, setAssignmentDraft] = useState<AssignmentDraft>({});
+
+  const wards = useMemo(() => Array.from(new Set(departments.map((dept) => dept.ward))).sort(), [departments]);
+
+  const assigneeOptions = useMemo(() => DIRECTORY.map((assignee) => ({ value: assignee.id, label: assignee.name })), []);
+
+  const activeDepartment = useMemo(
+    () => (activeDepartmentId ? departments.find((dept) => dept.id === activeDepartmentId) ?? null : null),
+    [activeDepartmentId, departments]
+  );
+
+  const filteredDepartments = useMemo(() => {
+    return departments.filter((department) => {
+      const matchesSearch = department.name.toLowerCase().includes(searchTerm.toLowerCase());
+      const matchesWard = wardFilter ? department.ward === wardFilter : true;
+      const matchesAssignee = assigneeFilter
+        ? department.assignees.some((assignee) => assignee.id === assigneeFilter)
+        : true;
+      const matchesStatus = statusFilter ? getDominantStatus(department.statusSummary) === statusFilter : true;
+
+      return matchesSearch && matchesWard && matchesAssignee && matchesStatus;
+    });
+  }, [departments, searchTerm, wardFilter, assigneeFilter, statusFilter]);
+
+  const dominantStatus = activeDepartment ? getDominantStatus(activeDepartment.statusSummary) : '';
+
+  const handleOpenAddDepartment = () => {
+    setDepartmentForm(defaultDepartmentForm);
+    setIsAddOpen(true);
   };
 
-  const refreshTemplates = async (deptId: string) => {
-    const response = await fetch(`${API_BASE_URL}/departments/${deptId}/templates`);
-
-    if (!response.ok) {
-      throw new Error(await extractError(response));
-    }
-
-    const data = (await response.json()) as TemplateRecord[];
-    setTemplates(data);
+  const handleOpenEditDepartment = (department: DepartmentRecord) => {
+    setActiveDepartmentId(department.id);
+    setDepartmentForm({
+      name: department.name,
+      ward: department.ward,
+      description: department.description,
+      onTrack: department.statusSummary.onTrack,
+      atRisk: department.statusSummary.atRisk,
+      blocked: department.statusSummary.blocked,
+      completed: department.statusSummary.completed
+    });
+    setIsEditOpen(true);
   };
 
-  const refreshTasks = async (deptId: string) => {
-    const response = await fetch(`${API_BASE_URL}/departments/${deptId}/tasks`);
+  const handleOpenAssignmentManager = (department: DepartmentRecord) => {
+    setActiveDepartmentId(department.id);
+    const draft: AssignmentDraft = {};
 
-    if (!response.ok) {
-      throw new Error(await extractError(response));
-    }
+    DIRECTORY.forEach((assignee) => {
+      const existing = department.assignees.find((item) => item.id === assignee.id);
+      draft[assignee.id] = {
+        active: Boolean(existing),
+        role: existing?.role ?? 'Reviewer'
+      };
+    });
 
-    const data = (await response.json()) as TaskRecord[];
-    setTasks(data);
+    setAssignmentDraft(draft);
+    setIsAssignmentOpen(true);
   };
 
-  const handleCreateTemplate = async (event: FormEvent<HTMLFormElement>) => {
-    event.preventDefault();
+  const handleDepartmentFieldChange = (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => {
+    const { name, value } = event.target;
 
-    if (!hasDepartment) {
-      setError('Select a department before creating templates.');
-      return;
-    }
-
-    try {
-      setLoading(true);
-      setError(null);
-      const payload = buildTemplatePayload(newTemplate);
-      const response = await fetch(`${API_BASE_URL}/departments/${departmentId}/templates`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        throw new Error(await extractError(response));
+    setDepartmentForm((prev) => {
+      if (['onTrack', 'atRisk', 'blocked', 'completed'].includes(name)) {
+        const parsed = Number.parseInt(value, 10);
+        return { ...prev, [name]: Number.isNaN(parsed) ? 0 : Math.max(0, parsed) } as DepartmentFormState;
       }
 
-      setNewTemplate(defaultTemplate);
-      setMessage('Template created successfully.');
-      await refreshTemplates(departmentId);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleStartEdit = (template: TemplateRecord) => {
-    setEditingTemplateId(template.id);
-    setEditingTemplate({
-      name: template.name,
-      description: template.description ?? '',
-      dueDay: template.dueDay,
-      forms: (template.forms ?? []).join('\n'),
-      requiredDocs: (template.requiredDocs ?? []).join('\n')
+      return { ...prev, [name]: value } as DepartmentFormState;
     });
   };
 
-  const handleUpdateTemplate = async (event: FormEvent<HTMLFormElement>) => {
+  const handleCreateDepartment = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const trimmedName = departmentForm.name.trim();
+    const trimmedWard = departmentForm.ward.trim();
+
+    if (!trimmedName || !trimmedWard) {
+      return;
+    }
+
+    const newDepartment: DepartmentRecord = {
+      id: `dept-${Date.now()}`,
+      name: trimmedName,
+      ward: trimmedWard,
+      description: departmentForm.description.trim(),
+      statusSummary: {
+        onTrack: departmentForm.onTrack,
+        atRisk: departmentForm.atRisk,
+        blocked: departmentForm.blocked,
+        completed: departmentForm.completed
+      },
+      assignees: []
+    };
+
+    setDepartments((prev) => [newDepartment, ...prev]);
+    setIsAddOpen(false);
+  };
+
+  const handleUpdateDepartment = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
-    if (!editingTemplateId) {
+    if (!activeDepartmentId) {
       return;
     }
 
-    try {
-      setLoading(true);
-      setError(null);
-      const payload = buildTemplatePayload(editingTemplate, true);
-      const response = await fetch(`${API_BASE_URL}/departments/${departmentId}/templates/${editingTemplateId}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
-      });
+    setDepartments((prev) =>
+      prev.map((department) =>
+        department.id === activeDepartmentId
+          ? {
+              ...department,
+              name: departmentForm.name.trim(),
+              ward: departmentForm.ward.trim(),
+              description: departmentForm.description.trim(),
+              statusSummary: {
+                onTrack: departmentForm.onTrack,
+                atRisk: departmentForm.atRisk,
+                blocked: departmentForm.blocked,
+                completed: departmentForm.completed
+              }
+            }
+          : department
+      )
+    );
 
-      if (!response.ok) {
-        throw new Error(await extractError(response));
-      }
-
-      setMessage('Template updated successfully.');
-      setEditingTemplateId(null);
-      setEditingTemplate(defaultTemplate);
-      await refreshTemplates(departmentId);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
+    setIsEditOpen(false);
   };
 
-  const handleDeleteTemplate = async (templateId: string) => {
-    if (!confirm('Delete this template? Generated tasks will remain for auditing.')) {
+  const handleAssignmentToggle = (assigneeId: string) => {
+    setAssignmentDraft((prev) => {
+      const current = prev[assigneeId];
+      return {
+        ...prev,
+        [assigneeId]: {
+          active: !current?.active,
+          role: current?.role ?? 'Reviewer'
+        }
+      };
+    });
+  };
+
+  const handleAssignmentRoleChange = (assigneeId: string, role: Role) => {
+    setAssignmentDraft((prev) => ({
+      ...prev,
+      [assigneeId]: {
+        active: prev[assigneeId]?.active ?? false,
+        role
+      }
+    }));
+  };
+
+  const handleAssignmentsSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+
+    if (!activeDepartmentId) {
       return;
     }
 
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(`${API_BASE_URL}/departments/${departmentId}/templates/${templateId}`, {
-        method: 'DELETE'
-      });
+    const selectedAssignees: DepartmentAssignee[] = Object.entries(assignmentDraft)
+      .filter(([, info]) => info.active)
+      .map(([assigneeId, info]) => ({ id: assigneeId, role: info.role }));
 
-      if (!response.ok) {
-        throw new Error(await extractError(response));
-      }
+    setDepartments((prev) =>
+      prev.map((department) =>
+        department.id === activeDepartmentId
+          ? {
+              ...department,
+              assignees: selectedAssignees
+            }
+          : department
+      )
+    );
 
-      setMessage('Template deleted successfully.');
-      await refreshTemplates(departmentId);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
+    setIsAssignmentOpen(false);
   };
 
-  const handleRegenerate = async (templateId: string) => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(`${API_BASE_URL}/departments/${departmentId}/templates/${templateId}/regenerate`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-
-      if (!response.ok) {
-        throw new Error(await extractError(response));
-      }
-
-      setMessage('Monthly task regenerated.');
-      await Promise.all([refreshTemplates(departmentId), refreshTasks(departmentId)]);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
+  const handleDialogClose = () => {
+    setIsAddOpen(false);
+    setIsEditOpen(false);
+    setIsAssignmentOpen(false);
+    setActiveDepartmentId(null);
   };
 
-  const handleTaskAction = async (taskId: string, action: 'skip' | 'close' | 'reopen') => {
-    try {
-      setLoading(true);
-      setError(null);
-      const response = await fetch(`${API_BASE_URL}/departments/${departmentId}/tasks/${taskId}/${action}`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({})
-      });
-
-      if (!response.ok) {
-        throw new Error(await extractError(response));
-      }
-
-      const actionLabel =
-        action === 'reopen' ? 'Task reopened.' : action === 'skip' ? 'Task skipped.' : 'Task closed.';
-      setMessage(actionLabel);
-      await refreshTasks(departmentId);
-    } catch (err) {
-      setError(getErrorMessage(err));
-    } finally {
-      setLoading(false);
-    }
-  };
+  const totalDepartments = departments.length;
+  const totalAssigned = departments.reduce((acc, department) => acc + department.assignees.length, 0);
 
   return (
     <>
       <Head>
-        <title>Compliance Automation Console</title>
-        <meta name="description" content="Manage monthly compliance templates and generated tasks" />
+        <title>Department Compliance Overview</title>
+        <meta
+          name="description"
+          content="Monitor department compliance, manage assignees, and keep status updates organized."
+        />
       </Head>
       <main className="min-h-screen bg-slate-50 text-slate-900">
-        <section className="mx-auto flex max-w-6xl flex-col gap-8 px-6 py-12">
-          <header className="flex flex-col gap-4">
-            <h1 className="text-4xl font-bold">Compliance Automation Console</h1>
-            <p className="text-slate-700">
-              Maintain monthly compliance templates, regenerate tasks on demand, and track overrides applied to
-              automatically generated assignments.
-            </p>
-            <div className="flex flex-col gap-3 rounded-lg bg-white p-4 shadow">
-              <label className="text-sm font-semibold uppercase tracking-wide text-slate-600" htmlFor="department-id">
-                Department ID
-              </label>
-              <div className="flex flex-col gap-2 sm:flex-row">
-                <input
-                  id="department-id"
-                  type="text"
-                  className="w-full rounded border border-slate-300 px-3 py-2"
-                  placeholder="Enter department UUID"
-                  value={departmentId}
-                  onChange={(event) => setDepartmentId(event.target.value)}
-                />
-                <button
-                  type="button"
-                  onClick={loadData}
-                  className="rounded bg-slate-900 px-4 py-2 font-semibold text-white shadow hover:bg-slate-700"
-                  disabled={loading}
-                >
-                  Load data
-                </button>
+        <section className="mx-auto flex w-full max-w-6xl flex-col gap-8 px-4 py-10 sm:px-6 lg:px-8">
+          <header className="flex flex-col gap-6 rounded-2xl bg-white p-6 shadow-md lg:flex-row lg:items-center lg:justify-between">
+            <div className="space-y-2">
+              <h1 className="text-3xl font-bold tracking-tight sm:text-4xl">Department compliance</h1>
+              <p className="max-w-2xl text-sm text-slate-600 sm:text-base">
+                Review department status summaries, keep track of assignee responsibilities, and quickly launch updates.
+              </p>
+            </div>
+            <div className="flex flex-col gap-4 text-sm text-slate-600 sm:flex-row sm:items-center sm:gap-10">
+              <div>
+                <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Departments</span>
+                <span className="text-2xl font-semibold text-slate-900">{totalDepartments}</span>
               </div>
-              {message && <p className="text-sm text-emerald-600">{message}</p>}
-              {error && <p className="text-sm text-rose-600">{error}</p>}
+              <div>
+                <span className="block text-xs font-semibold uppercase tracking-wide text-slate-500">Assignees mapped</span>
+                <span className="text-2xl font-semibold text-slate-900">{totalAssigned}</span>
+              </div>
+              <button
+                type="button"
+                onClick={handleOpenAddDepartment}
+                className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 font-semibold text-white shadow hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+              >
+                <span aria-hidden="true" className="mr-2 text-lg">
+                  +
+                </span>
+                New department
+              </button>
             </div>
           </header>
 
-          <section className="rounded-lg bg-white p-6 shadow">
-            <h2 className="text-2xl font-semibold">Create monthly template</h2>
-            <p className="mb-4 text-sm text-slate-600">
-              Capture forms, evidence requirements, and due dates that should automatically produce tasks at the start of
-              each month.
-            </p>
-            <form className="grid gap-4 md:grid-cols-2" onSubmit={handleCreateTemplate}>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-slate-700" htmlFor="template-name">
-                  Template name
-                </label>
+          <section aria-label="Department filters" className="grid gap-4 rounded-2xl bg-white p-6 shadow-md">
+            <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+              <label className="flex flex-col gap-2 text-sm text-slate-700">
+                <span className="font-semibold">Search</span>
                 <input
-                  id="template-name"
-                  className="rounded border border-slate-300 px-3 py-2"
-                  value={newTemplate.name}
-                  onChange={(event) => setNewTemplate((prev) => ({ ...prev, name: event.target.value }))}
-                  placeholder="e.g., Monthly Access Review"
-                  required
+                  type="search"
+                  value={searchTerm}
+                  onChange={(event) => setSearchTerm(event.target.value)}
+                  placeholder="Search by department name"
+                  className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                 />
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-slate-700" htmlFor="template-dueDay">
-                  Due day (1-31)
-                </label>
-                <input
-                  id="template-dueDay"
-                  type="number"
-                  min={1}
-                  max={31}
-                  className="rounded border border-slate-300 px-3 py-2"
-                  value={newTemplate.dueDay}
-                  onChange={(event) =>
-                    setNewTemplate((prev) => ({ ...prev, dueDay: Number.parseInt(event.target.value, 10) || 1 }))
-                  }
-                  required
-                />
-              </div>
-              <div className="md:col-span-2 flex flex-col gap-2">
-                <label className="text-sm font-medium text-slate-700" htmlFor="template-description">
-                  Description
-                </label>
-                <textarea
-                  id="template-description"
-                  className="min-h-[80px] rounded border border-slate-300 px-3 py-2"
-                  value={newTemplate.description}
-                  onChange={(event) => setNewTemplate((prev) => ({ ...prev, description: event.target.value }))}
-                  placeholder="Summarize the compliance objective"
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-slate-700" htmlFor="template-forms">
-                  Forms (one per line)
-                </label>
-                <textarea
-                  id="template-forms"
-                  className="min-h-[100px] rounded border border-slate-300 px-3 py-2"
-                  value={newTemplate.forms}
-                  onChange={(event) => setNewTemplate((prev) => ({ ...prev, forms: event.target.value }))}
-                  placeholder={'Access review checklist\nException approval form'}
-                />
-              </div>
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-slate-700" htmlFor="template-requiredDocs">
-                  Required documents (one per line)
-                </label>
-                <textarea
-                  id="template-requiredDocs"
-                  className="min-h-[100px] rounded border border-slate-300 px-3 py-2"
-                  value={newTemplate.requiredDocs}
-                  onChange={(event) => setNewTemplate((prev) => ({ ...prev, requiredDocs: event.target.value }))}
-                  placeholder={'access-review-report.pdf\nexception-approvals.zip'}
-                />
-              </div>
-              <div className="md:col-span-2 flex justify-end">
-                <button
-                  type="submit"
-                  className="rounded bg-emerald-600 px-4 py-2 font-semibold text-white shadow hover:bg-emerald-500 disabled:opacity-70"
-                  disabled={loading}
+              </label>
+              <label className="flex flex-col gap-2 text-sm text-slate-700">
+                <span className="font-semibold">Ward</span>
+                <select
+                  value={wardFilter}
+                  onChange={(event) => setWardFilter(event.target.value)}
+                  className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
                 >
-                  Save template
-                </button>
-              </div>
-            </form>
+                  <option value="">All wards</option>
+                  {wards.map((ward) => (
+                    <option key={ward} value={ward}>
+                      {ward}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-2 text-sm text-slate-700">
+                <span className="font-semibold">Assignee</span>
+                <select
+                  value={assigneeFilter}
+                  onChange={(event) => setAssigneeFilter(event.target.value)}
+                  className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                >
+                  <option value="">All assignees</option>
+                  {assigneeOptions.map((assignee) => (
+                    <option key={assignee.value} value={assignee.value}>
+                      {assignee.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="flex flex-col gap-2 text-sm text-slate-700">
+                <span className="font-semibold">Dominant status</span>
+                <select
+                  value={statusFilter}
+                  onChange={(event) => setStatusFilter(event.target.value)}
+                  className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                >
+                  <option value="">All statuses</option>
+                  <option value="onTrack">On track</option>
+                  <option value="atRisk">At risk</option>
+                  <option value="blocked">Blocked</option>
+                  <option value="completed">Completed</option>
+                </select>
+              </label>
+            </div>
           </section>
 
-          <section className="rounded-lg bg-white p-6 shadow">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-2xl font-semibold">Templates</h2>
-              <span className="text-sm text-slate-500">{templates.length} configured</span>
-            </div>
-            {templates.length === 0 ? (
-              <p className="text-sm text-slate-600">No templates found for this department.</p>
+          <section aria-live="polite" className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
+            {filteredDepartments.length === 0 ? (
+              <div className="col-span-full rounded-2xl border border-dashed border-slate-300 bg-white p-10 text-center text-sm text-slate-500">
+                No departments match the selected filters.
+              </div>
             ) : (
-              <div className="space-y-4">
-                {templates.map((template) => {
-                  const isEditing = editingTemplateId === template.id;
-                  return (
-                    <article key={template.id} className="rounded border border-slate-200 p-4 shadow-sm">
-                      <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
+              filteredDepartments.map((department) => {
+                const assignees = department.assignees
+                  .map((assignment) => {
+                    const match = DIRECTORY.find((assignee) => assignee.id === assignment.id);
+                    return match ? { ...match, role: assignment.role } : null;
+                  })
+                  .filter((item): item is DirectoryAssignee & { role: Role } => item !== null);
+
+                const departmentDominantStatus = getDominantStatus(department.statusSummary);
+
+                return (
+                  <article
+                    key={department.id}
+                    className="flex flex-col justify-between rounded-2xl border border-slate-200 bg-white p-6 shadow-sm transition hover:-translate-y-1 hover:shadow-lg focus-within:outline focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-emerald-600"
+                  >
+                    <div className="flex flex-col gap-4">
+                      <div className="flex flex-wrap items-start justify-between gap-3">
                         <div>
-                          <h3 className="text-xl font-semibold">{template.name}</h3>
-                          <p className="text-sm text-slate-600">
-                            Due on day <span className="font-semibold">{template.dueDay}</span> of each month
-                          </p>
+                          <h2 className="text-xl font-semibold text-slate-900">{department.name}</h2>
+                          <p className="text-sm text-slate-600">{department.description}</p>
                         </div>
-                        <div className="flex flex-wrap gap-2">
-                          <button
-                            type="button"
-                            className="rounded bg-slate-900 px-3 py-2 text-sm font-semibold text-white hover:bg-slate-700"
-                            onClick={() => handleRegenerate(template.id)}
-                            disabled={loading}
-                          >
-                            Generate current month
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded border border-slate-300 px-3 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                            onClick={() => handleStartEdit(template)}
-                            disabled={loading}
-                          >
-                            Edit
-                          </button>
-                          <button
-                            type="button"
-                            className="rounded border border-rose-200 px-3 py-2 text-sm font-semibold text-rose-600 hover:bg-rose-50"
-                            onClick={() => handleDeleteTemplate(template.id)}
-                            disabled={loading}
-                          >
-                            Delete
-                          </button>
-                        </div>
+                        <span className="inline-flex items-center rounded-full bg-slate-100 px-3 py-1 text-xs font-semibold uppercase tracking-wide text-slate-700">
+                          Ward: {department.ward}
+                        </span>
                       </div>
 
-                      {template.description && (
-                        <p className="mt-3 text-sm text-slate-700">{template.description}</p>
-                      )}
+                      <StatusSummaryList summary={department.statusSummary} dominantKey={departmentDominantStatus} />
 
-                      <div className="mt-3 grid gap-3 md:grid-cols-2">
-                        <div>
-                          <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Forms</h4>
-                          <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                            {(template.forms ?? []).length > 0 ? (
-                              (template.forms ?? []).map((item) => <li key={item}>{item}</li>)
-                            ) : (
-                              <li className="italic text-slate-400">None specified</li>
-                            )}
+                      <div className="flex flex-col gap-2">
+                        <h3 className="text-sm font-semibold uppercase tracking-wide text-slate-500">Assigned team</h3>
+                        {assignees.length === 0 ? (
+                          <p className="text-sm text-slate-500">No assignees assigned yet.</p>
+                        ) : (
+                          <ul className="flex flex-wrap gap-2">
+                            {assignees.map((assignee) => (
+                              <li
+                                key={assignee.id}
+                                className="group inline-flex items-center gap-2 rounded-full border border-slate-200 bg-slate-50 px-3 py-1 text-xs text-slate-700"
+                              >
+                                <span className="font-semibold">{assignee.name}</span>
+                                <span className="rounded-full bg-slate-200 px-2 py-0.5 text-[11px] font-semibold uppercase tracking-wide text-slate-600">
+                                  {assignee.role}
+                                </span>
+                              </li>
+                            ))}
                           </ul>
-                        </div>
-                        <div>
-                          <h4 className="text-sm font-semibold uppercase tracking-wide text-slate-600">Required documents</h4>
-                          <ul className="mt-1 list-disc space-y-1 pl-5 text-sm text-slate-700">
-                            {(template.requiredDocs ?? []).length > 0 ? (
-                              (template.requiredDocs ?? []).map((item) => <li key={item}>{item}</li>)
-                            ) : (
-                              <li className="italic text-slate-400">None specified</li>
-                            )}
-                          </ul>
-                        </div>
+                        )}
                       </div>
+                    </div>
 
-                      {isEditing && (
-                        <form className="mt-4 grid gap-4 md:grid-cols-2" onSubmit={handleUpdateTemplate}>
-                          <div className="flex flex-col gap-2">
-                            <label className="text-sm font-medium text-slate-700" htmlFor={`edit-name-${template.id}`}>
-                              Template name
-                            </label>
-                            <input
-                              id={`edit-name-${template.id}`}
-                              className="rounded border border-slate-300 px-3 py-2"
-                              value={editingTemplate.name}
-                              onChange={(event) =>
-                                setEditingTemplate((prev) => ({ ...prev, name: event.target.value }))
-                              }
-                              required
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <label className="text-sm font-medium text-slate-700" htmlFor={`edit-due-${template.id}`}>
-                              Due day (1-31)
-                            </label>
-                            <input
-                              id={`edit-due-${template.id}`}
-                              type="number"
-                              min={1}
-                              max={31}
-                              className="rounded border border-slate-300 px-3 py-2"
-                              value={editingTemplate.dueDay}
-                              onChange={(event) =>
-                                setEditingTemplate((prev) => ({
-                                  ...prev,
-                                  dueDay: Number.parseInt(event.target.value, 10) || template.dueDay
-                                }))
-                              }
-                              required
-                            />
-                          </div>
-                          <div className="md:col-span-2 flex flex-col gap-2">
-                            <label className="text-sm font-medium text-slate-700" htmlFor={`edit-description-${template.id}`}>
-                              Description
-                            </label>
-                            <textarea
-                              id={`edit-description-${template.id}`}
-                              className="min-h-[80px] rounded border border-slate-300 px-3 py-2"
-                              value={editingTemplate.description}
-                              onChange={(event) =>
-                                setEditingTemplate((prev) => ({ ...prev, description: event.target.value }))
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <label className="text-sm font-medium text-slate-700" htmlFor={`edit-forms-${template.id}`}>
-                              Forms (one per line)
-                            </label>
-                            <textarea
-                              id={`edit-forms-${template.id}`}
-                              className="min-h-[100px] rounded border border-slate-300 px-3 py-2"
-                              value={editingTemplate.forms}
-                              onChange={(event) =>
-                                setEditingTemplate((prev) => ({ ...prev, forms: event.target.value }))
-                              }
-                            />
-                          </div>
-                          <div className="flex flex-col gap-2">
-                            <label className="text-sm font-medium text-slate-700" htmlFor={`edit-docs-${template.id}`}>
-                              Required documents (one per line)
-                            </label>
-                            <textarea
-                              id={`edit-docs-${template.id}`}
-                              className="min-h-[100px] rounded border border-slate-300 px-3 py-2"
-                              value={editingTemplate.requiredDocs}
-                              onChange={(event) =>
-                                setEditingTemplate((prev) => ({ ...prev, requiredDocs: event.target.value }))
-                              }
-                            />
-                          </div>
-                          <div className="md:col-span-2 flex gap-2">
-                            <button
-                              type="submit"
-                              className="rounded bg-emerald-600 px-4 py-2 text-sm font-semibold text-white hover:bg-emerald-500"
-                              disabled={loading}
-                            >
-                              Save changes
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:bg-slate-100"
-                              onClick={() => {
-                                setEditingTemplateId(null);
-                                setEditingTemplate(defaultTemplate);
-                              }}
-                            >
-                              Cancel
-                            </button>
-                          </div>
-                        </form>
-                      )}
-                    </article>
-                  );
-                })}
-              </div>
-            )}
-          </section>
-
-          <section className="rounded-lg bg-white p-6 shadow">
-            <div className="mb-4 flex items-center justify-between">
-              <h2 className="text-2xl font-semibold">Monthly compliance tasks</h2>
-              <span className="text-sm text-slate-500">{tasks.length} generated</span>
-            </div>
-            {tasks.length === 0 ? (
-              <p className="text-sm text-slate-600">No generated tasks to display.</p>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="min-w-full divide-y divide-slate-200">
-                  <thead className="bg-slate-100 text-left text-sm uppercase tracking-wide text-slate-600">
-                    <tr>
-                      <th className="px-4 py-3">Task</th>
-                      <th className="px-4 py-3">Template</th>
-                      <th className="px-4 py-3">Due date</th>
-                      <th className="px-4 py-3">Status</th>
-                      <th className="px-4 py-3">Manual override</th>
-                      <th className="px-4 py-3 text-right">Actions</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-200 text-sm">
-                    {tasks.map((task) => (
-                      <tr key={task.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-3">
-                          <div className="font-semibold text-slate-900">{task.title}</div>
-                          {task.details && <div className="text-xs text-slate-600">{task.details}</div>}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="font-semibold">{task.template.name}</div>
-                          <div className="text-xs text-slate-500">Due day: {task.template.dueDay}</div>
-                        </td>
-                        <td className="px-4 py-3">{formatDate(task.dueDate)}</td>
-                        <td className="px-4 py-3">
-                          <span className="rounded bg-slate-900 px-2 py-1 text-xs font-semibold uppercase tracking-wide text-white">
-                            {task.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {task.manualOverride ? (
-                            <span className="rounded bg-amber-100 px-2 py-1 text-xs font-semibold text-amber-700">Yes</span>
-                          ) : (
-                            <span className="rounded bg-emerald-100 px-2 py-1 text-xs font-semibold text-emerald-700">No</span>
-                          )}
-                        </td>
-                        <td className="px-4 py-3 text-right">
-                          <div className="flex justify-end gap-2">
-                            <button
-                              type="button"
-                              className="rounded border border-slate-300 px-2 py-1 text-xs font-semibold text-slate-700 hover:bg-slate-100"
-                              onClick={() => handleTaskAction(task.id, 'reopen')}
-                              disabled={loading}
-                            >
-                              Reopen
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded border border-amber-300 px-2 py-1 text-xs font-semibold text-amber-700 hover:bg-amber-50"
-                              onClick={() => handleTaskAction(task.id, 'skip')}
-                              disabled={loading}
-                            >
-                              Skip
-                            </button>
-                            <button
-                              type="button"
-                              className="rounded border border-rose-300 px-2 py-1 text-xs font-semibold text-rose-600 hover:bg-rose-50"
-                              onClick={() => handleTaskAction(task.id, 'close')}
-                              disabled={loading}
-                            >
-                              Close
-                            </button>
-                          </div>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    <div className="mt-6 flex flex-wrap gap-3">
+                      <button
+                        type="button"
+                        onClick={() => handleOpenEditDepartment(department)}
+                        className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+                      >
+                        Edit department
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleOpenAssignmentManager(department)}
+                        className="inline-flex items-center justify-center rounded-lg bg-slate-900 px-4 py-2 text-sm font-semibold text-white transition hover:bg-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-900"
+                      >
+                        Manage assignees & roles
+                      </button>
+                    </div>
+                  </article>
+                );
+              })
             )}
           </section>
         </section>
+
+        {isAddOpen && (
+          <Dialog onClose={handleDialogClose} title="Add department" description="Capture a new department and record its compliance summary." variant="create">
+            <DepartmentForm
+              formState={departmentForm}
+              onChange={handleDepartmentFieldChange}
+              onSubmit={handleCreateDepartment}
+              submitLabel="Create department"
+              onCancel={handleDialogClose}
+            />
+          </Dialog>
+        )}
+
+        {isEditOpen && activeDepartment && (
+          <Dialog
+            onClose={handleDialogClose}
+            title={`Edit ${activeDepartment.name}`}
+            description={`Update the ${activeDepartment.ward} ward department details and status summary.`}
+            variant={dominantStatus}
+          >
+            <DepartmentForm
+              formState={departmentForm}
+              onChange={handleDepartmentFieldChange}
+              onSubmit={handleUpdateDepartment}
+              submitLabel="Save changes"
+              onCancel={handleDialogClose}
+            />
+          </Dialog>
+        )}
+
+        {isAssignmentOpen && activeDepartment && (
+          <Dialog
+            onClose={handleDialogClose}
+            title={`Manage assignees for ${activeDepartment.name}`}
+            description="Select the team responsible for this department and configure their roles."
+            variant="assign"
+          >
+            <form className="flex flex-col gap-6" onSubmit={handleAssignmentsSubmit}>
+              <div className="space-y-4">
+                {DIRECTORY.map((assignee) => {
+                  const draft = assignmentDraft[assignee.id];
+
+                  return (
+                    <div key={assignee.id} className="flex flex-col gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                      <div className="flex flex-wrap items-center justify-between gap-3">
+                        <div>
+                          <h4 className="text-sm font-semibold text-slate-900">{assignee.name}</h4>
+                          <p className="text-xs text-slate-500">{assignee.email}</p>
+                          <p className="text-xs text-slate-400">Wards: {assignee.wards.join(', ')}</p>
+                        </div>
+                        <label className="inline-flex items-center gap-2 text-sm font-semibold text-slate-700">
+                          <input
+                            type="checkbox"
+                            className="h-4 w-4 rounded border-slate-300 text-slate-900 focus:ring-slate-500"
+                            checked={draft?.active ?? false}
+                            onChange={() => handleAssignmentToggle(assignee.id)}
+                            aria-label={`Assign ${assignee.name} to ${activeDepartment.name}`}
+                          />
+                          Assigned
+                        </label>
+                      </div>
+                      <div className="flex flex-wrap items-center gap-3">
+                        <label className="text-xs font-medium uppercase tracking-wide text-slate-500" htmlFor={`role-${assignee.id}`}>
+                          Role
+                        </label>
+                        <select
+                          id={`role-${assignee.id}`}
+                          className="rounded-lg border border-slate-300 px-3 py-2 text-sm focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+                          value={draft?.role ?? 'Reviewer'}
+                          onChange={(event) => handleAssignmentRoleChange(assignee.id, event.target.value as Role)}
+                          disabled={!draft?.active}
+                        >
+                          <option value="Owner">Owner</option>
+                          <option value="Reviewer">Reviewer</option>
+                          <option value="Observer">Observer</option>
+                        </select>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+                <button
+                  type="button"
+                  onClick={handleDialogClose}
+                  className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 hover:border-slate-400 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+                >
+                  Save assignments
+                </button>
+              </div>
+            </form>
+          </Dialog>
+        )}
       </main>
     </>
   );
 }
 
-function buildTemplatePayload(
-  data: { name: string; description?: string; dueDay: number; forms?: string; requiredDocs?: string },
-  partial = false
-) {
-  const formsArray = splitMultiline(data.forms ?? '');
-  const docsArray = splitMultiline(data.requiredDocs ?? '');
+type DialogProps = {
+  title: string;
+  description: string;
+  onClose: () => void;
+  children: ReactNode;
+  variant?: string;
+};
 
-  if (partial) {
-    return {
-      ...(data.name ? { name: data.name } : {}),
-      ...(data.description !== undefined ? { description: data.description } : {}),
-      ...(Number.isFinite(data.dueDay) ? { dueDay: data.dueDay } : {}),
-      ...(data.forms !== undefined ? { forms: formsArray } : {}),
-      ...(data.requiredDocs !== undefined ? { requiredDocs: docsArray } : {})
-    };
-  }
-
-  return {
-    name: data.name,
-    description: data.description ?? null,
-    dueDay: data.dueDay,
-    forms: formsArray,
-    requiredDocs: docsArray
-  };
+function Dialog({ title, description, onClose, children, variant }: DialogProps) {
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 p-4" role="dialog" aria-modal="true">
+      <div className="max-h-[90vh] w-full max-w-2xl overflow-y-auto rounded-2xl bg-white p-6 shadow-xl focus:outline-none">
+        <div className="flex items-start justify-between gap-4 border-b border-slate-200 pb-4">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wide text-slate-400">{variantLabel(variant)}</p>
+            <h2 className="mt-1 text-2xl font-semibold text-slate-900">{title}</h2>
+            <p className="mt-1 text-sm text-slate-600">{description}</p>
+          </div>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-full p-2 text-slate-500 transition hover:bg-slate-100 hover:text-slate-700 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+            aria-label="Close dialog"
+          >
+            <span aria-hidden="true">×</span>
+          </button>
+        </div>
+        <div className="pt-4">{children}</div>
+      </div>
+    </div>
+  );
 }
 
-function splitMultiline(value: string) {
-  const entries = value
-    .split(/\r?\n/)
-    .map((entry) => entry.trim())
-    .filter((entry) => entry.length > 0);
+type DepartmentFormProps = {
+  formState: DepartmentFormState;
+  onChange: (event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+  submitLabel: string;
+  onCancel: () => void;
+};
 
-  return entries;
+function DepartmentForm({ formState, onChange, onSubmit, submitLabel, onCancel }: DepartmentFormProps) {
+  return (
+    <form className="flex flex-col gap-6" onSubmit={onSubmit}>
+      <div className="grid gap-4 sm:grid-cols-2">
+        <label className="flex flex-col gap-2 text-sm text-slate-700" htmlFor="department-name">
+          <span className="font-semibold">Department name</span>
+          <input
+            id="department-name"
+            name="name"
+            value={formState.name}
+            onChange={onChange}
+            placeholder="e.g., Health Records"
+            className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            required
+          />
+        </label>
+        <label className="flex flex-col gap-2 text-sm text-slate-700" htmlFor="department-ward">
+          <span className="font-semibold">Ward</span>
+          <input
+            id="department-ward"
+            name="ward"
+            value={formState.ward}
+            onChange={onChange}
+            placeholder="e.g., Central"
+            className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+            required
+          />
+        </label>
+      </div>
+
+      <label className="flex flex-col gap-2 text-sm text-slate-700" htmlFor="department-description">
+        <span className="font-semibold">Description</span>
+        <textarea
+          id="department-description"
+          name="description"
+          value={formState.description}
+          onChange={onChange}
+          placeholder="Summarize the department's compliance focus areas"
+          className="min-h-[100px] rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+        />
+      </label>
+
+      <fieldset className="grid gap-4 rounded-xl border border-slate-200 p-4">
+        <legend className="px-2 text-sm font-semibold uppercase tracking-wide text-slate-500">Status summary</legend>
+        <div className="grid gap-4 sm:grid-cols-2">
+          <NumberField
+            id="department-onTrack"
+            name="onTrack"
+            label="On track"
+            value={formState.onTrack}
+            onChange={onChange}
+          />
+          <NumberField id="department-atRisk" name="atRisk" label="At risk" value={formState.atRisk} onChange={onChange} />
+          <NumberField id="department-blocked" name="blocked" label="Blocked" value={formState.blocked} onChange={onChange} />
+          <NumberField
+            id="department-completed"
+            name="completed"
+            label="Completed"
+            value={formState.completed}
+            onChange={onChange}
+          />
+        </div>
+      </fieldset>
+
+      <div className="flex flex-col-reverse gap-3 sm:flex-row sm:justify-end">
+        <button
+          type="button"
+          onClick={onCancel}
+          className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-4 py-2 text-sm font-semibold text-slate-700 transition hover:border-slate-400 hover:text-slate-900 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-slate-500"
+        >
+          Cancel
+        </button>
+        <button
+          type="submit"
+          className="inline-flex items-center justify-center rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white shadow transition hover:bg-emerald-500 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-emerald-600"
+        >
+          {submitLabel}
+        </button>
+      </div>
+    </form>
+  );
 }
 
-async function extractError(response: Response) {
-  try {
-    const payload = (await response.json()) as ApiError;
-    return payload.message ?? payload.error ?? response.statusText;
-  } catch {
-    return response.statusText;
-  }
+type NumberFieldProps = {
+  id: string;
+  name: keyof Pick<DepartmentFormState, 'onTrack' | 'atRisk' | 'blocked' | 'completed'>;
+  label: string;
+  value: number;
+  onChange: (event: ChangeEvent<HTMLInputElement>) => void;
+};
+
+function NumberField({ id, name, label, value, onChange }: NumberFieldProps) {
+  return (
+    <label className="flex flex-col gap-2 text-sm text-slate-700" htmlFor={id}>
+      <span className="font-semibold">{label}</span>
+      <input
+        id={id}
+        name={name}
+        type="number"
+        min={0}
+        value={value}
+        onChange={onChange}
+        className="rounded-lg border border-slate-300 px-3 py-2 focus:border-slate-500 focus:outline-none focus:ring-2 focus:ring-slate-200"
+      />
+    </label>
+  );
 }
 
-function getErrorMessage(error: unknown) {
-  if (error instanceof Error) {
-    return error.message;
-  }
+type StatusSummaryListProps = {
+  summary: StatusSummary;
+  dominantKey: string;
+};
 
-  return 'Unexpected error occurred';
+function StatusSummaryList({ summary, dominantKey }: StatusSummaryListProps) {
+  const items: Array<{
+    key: keyof StatusSummary;
+    label: string;
+    count: number;
+    accentClass: string;
+  }> = [
+    { key: 'onTrack', label: 'On track', count: summary.onTrack, accentClass: 'bg-emerald-100 text-emerald-700' },
+    { key: 'atRisk', label: 'At risk', count: summary.atRisk, accentClass: 'bg-amber-100 text-amber-700' },
+    { key: 'blocked', label: 'Blocked', count: summary.blocked, accentClass: 'bg-rose-100 text-rose-700' },
+    { key: 'completed', label: 'Completed', count: summary.completed, accentClass: 'bg-slate-200 text-slate-700' }
+  ];
+
+  return (
+    <dl className="grid gap-3 sm:grid-cols-2">
+      {items.map((item) => (
+        <div
+          key={item.key}
+          className={`flex items-center justify-between gap-3 rounded-xl border border-slate-200 px-4 py-3 text-sm transition ${
+            dominantKey === item.key ? 'bg-slate-900 text-white' : 'bg-slate-50 text-slate-700'
+          }`}
+        >
+          <div>
+            <dt className="font-semibold">{item.label}</dt>
+            <dd className="text-xs text-slate-400">{dominantKey === item.key ? 'Primary focus' : 'Tasks'}</dd>
+          </div>
+          <span
+            className={`inline-flex min-w-[2.5rem] justify-center rounded-full px-3 py-1 text-sm font-semibold ${
+              dominantKey === item.key ? 'bg-white/10 text-white' : item.accentClass
+            }`}
+          >
+            {item.count}
+          </span>
+        </div>
+      ))}
+    </dl>
+  );
 }
 
-function formatDate(value: string) {
-  const date = new Date(value);
+function getDominantStatus(summary: StatusSummary): keyof StatusSummary {
+  const entries: Array<[keyof StatusSummary, number]> = [
+    ['onTrack', summary.onTrack],
+    ['atRisk', summary.atRisk],
+    ['blocked', summary.blocked],
+    ['completed', summary.completed]
+  ];
 
-  if (Number.isNaN(date.getTime())) {
-    return value;
+  return entries.sort((a, b) => b[1] - a[1])[0][0];
+}
+
+function variantLabel(variant?: string) {
+  switch (variant) {
+    case 'onTrack':
+      return 'On track department';
+    case 'atRisk':
+      return 'At risk department';
+    case 'blocked':
+      return 'Blocked department';
+    case 'completed':
+      return 'Completed department';
+    case 'assign':
+      return 'Assignee management';
+    case 'create':
+      return 'New department';
+    default:
+      return 'Department update';
   }
-
-  return date.toLocaleDateString(undefined, { year: 'numeric', month: 'short', day: 'numeric' });
 }
