@@ -49,7 +49,7 @@ export class ReportsService {
     const { default: puppeteer } = await import('puppeteer');
     const browser = await puppeteer.launch({
       args: ['--no-sandbox', '--disable-setuid-sandbox'],
-      headless: 'new'
+      headless: 'new' as any
     });
 
     try {

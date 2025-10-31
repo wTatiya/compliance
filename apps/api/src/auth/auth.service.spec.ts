@@ -1,25 +1,52 @@
 import { Test } from '@nestjs/testing';
-import { ConfigModule } from '@nestjs/config';
+import { ConfigService } from '@nestjs/config';
+import { JwtService } from '@nestjs/jwt';
 import { AuthService, AuthUser } from './auth.service';
-import { AuthModule } from './auth.module';
 import { PrismaService } from '../prisma/prisma.service';
 import { Role } from '../authorization/roles.enum';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 describe('AuthService', () => {
   let service: AuthService;
 
   beforeAll(async () => {
-    process.env.JWT_SECRET = 'unit-test-secret';
-
     const moduleRef = await Test.createTestingModule({
-      imports: [ConfigModule.forRoot({ isGlobal: true }), AuthModule]
-    })
-      .overrideProvider(PrismaService)
-      .useValue({
-        assignee: {
-          findUnique: jest.fn()
+      providers: [
+        AuthService,
+        {
+          provide: JwtService,
+          useValue: new JwtService({ secret: 'unit-test-secret', signOptions: { expiresIn: '1h' } })
+        },
+        {
+          provide: PrismaService,
+          useValue: {
+            assignee: {
+              findUnique: jest.fn()
+            }
+          }
+        },
+        {
+          provide: ConfigService,
+          useValue: {
+            get: jest.fn((key: string, defaultValue?: unknown) => {
+              if (key === 'JWT_SECRET') {
+                return 'unit-test-secret';
+              }
+
+              if (key === 'JWT_EXPIRES_IN') {
+                return '1h';
+              }
+
+              return defaultValue;
+            })
+          }
+        },
+        {
+          provide: AuditLogsService,
+          useValue: { logSensitiveAction: jest.fn() }
         }
-      })
+      ]
+    })
       .compile();
 
     service = moduleRef.get(AuthService);

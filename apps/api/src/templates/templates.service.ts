@@ -323,16 +323,16 @@ export class TemplatesService {
     return { month: normalizedMonth, year: normalizedYear };
   }
 
-  private cleanStringArray(values?: string[] | null) {
+  private cleanStringArray(values?: string[] | null): Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput {
     if (!Array.isArray(values)) {
-      return null;
+      return Prisma.JsonNull;
     }
 
     const cleaned = values
       .map((value) => value?.trim())
       .filter((value): value is string => Boolean(value && value.length > 0));
 
-    return cleaned.length > 0 ? cleaned : null;
+    return cleaned.length > 0 ? (cleaned as Prisma.InputJsonValue) : Prisma.JsonNull;
   }
 
 }

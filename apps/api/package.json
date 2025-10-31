@@ -53,6 +53,7 @@
     "prisma:generate": "prisma generate",
     "prisma:migrate": "prisma migrate dev",
     "prisma:deploy": "prisma migrate deploy",
-    "prisma:seed": "prisma db seed"
+    "prisma:seed": "prisma db seed",
+    "prisma:seed:qa": "ts-node --transpile-only prisma/seed-qa.ts"
   }
 }
