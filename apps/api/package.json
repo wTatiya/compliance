@@ -10,6 +10,7 @@
     "@nestjs/jwt": "^10.2.0",
     "@nestjs/passport": "^10.0.3",
     "@nestjs/platform-fastify": "^10.3.2",
+    "@nestjs/schedule": "^3.0.4",
     "@prisma/client": "^5.9.1",
     "bcryptjs": "^2.4.3",
     "passport": "^0.7.0",

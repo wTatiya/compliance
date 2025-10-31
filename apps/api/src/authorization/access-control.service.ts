@@ -10,8 +10,15 @@ const ROLE_HIERARCHY: Record<Role, Role[]> = {
 
 const ROLE_PERMISSIONS: Record<Role, Permission[]> = {
   [Role.Admin]: Object.values(Permission),
-  [Role.DepartmentManager]: [Permission.ViewAssignments, Permission.ManageAssignments, Permission.ViewDepartments],
-  [Role.Assignee]: [Permission.ViewAssignments]
+  [Role.DepartmentManager]: [
+    Permission.ViewAssignments,
+    Permission.ManageAssignments,
+    Permission.ViewDepartments,
+    Permission.ViewTemplates,
+    Permission.ManageTemplates,
+    Permission.ManageComplianceTasks
+  ],
+  [Role.Assignee]: [Permission.ViewAssignments, Permission.ViewTemplates]
 };
 
 @Injectable()
