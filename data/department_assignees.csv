@@ -1,0 +1,5 @@
+DepartmentAssigneeID,DepartmentID,AssigneeID,Primary
+DA-001,WARD-ICU,icu.nurse@example.com,TRUE
+DA-002,WARD-ER,er.supervisor@example.com,TRUE
+DA-003,WARD-HK,hk.lead@example.com,TRUE
+DA-004,WARD-ER,hk.lead@example.com,FALSE
