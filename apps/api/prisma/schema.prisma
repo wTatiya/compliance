@@ -25,6 +25,7 @@ model Department {
   assignees   Assignee[]
   templates   ComplianceTemplate[]
   memberships AssigneeDepartment[]
+  auditLogs   AuditLog[]
   createdAt   DateTime            @default(now())
   updatedAt   DateTime            @updatedAt
 
@@ -161,11 +162,19 @@ model AuditLog {
   taskId    String?       @db.Uuid
   actor     Assignee?     @relation("AuditActor", fields: [actorId], references: [id], onDelete: SetNull)
   actorId   String?       @db.Uuid
+  department   Department?   @relation(fields: [departmentId], references: [id], onDelete: SetNull)
+  departmentId String?       @db.Uuid
   action    String
+  primaryEntityType String?
+  primaryEntityId   String?
+  affectedEntities  Json?
   metadata  Json?
   createdAt DateTime      @default(now())
 
   @@map("audit_logs")
   @@index([taskId])
   @@index([actorId])
+  @@index([departmentId])
+  @@index([action])
+  @@index([createdAt])
 }

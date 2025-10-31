@@ -56,9 +56,15 @@ export class TemplatesController {
 
   @Post()
   @Permissions(Permission.ManageTemplates)
-  createTemplate(@Param('departmentId') departmentId: string, @Body() body: TemplateRequestBody) {
+  createTemplate(
+    @Param('departmentId') departmentId: string,
+    @Body() body: TemplateRequestBody,
+    @Req() request: RequestWithUser
+  ) {
     const payload = this.parseTemplatePayload(body, true) as TemplatePayload;
-    return this.templatesService.createTemplate(departmentId, payload);
+    return this.templatesService.createTemplate(departmentId, payload, {
+      actorId: request.user?.sub ?? null
+    });
   }
 
   @Put(':templateId')
@@ -66,16 +72,25 @@ export class TemplatesController {
   updateTemplate(
     @Param('departmentId') departmentId: string,
     @Param('templateId') templateId: string,
-    @Body() body: TemplateRequestBody
+    @Body() body: TemplateRequestBody,
+    @Req() request: RequestWithUser
   ) {
     const payload = this.parseTemplatePayload(body, false) as TemplateUpdatePayload;
-    return this.templatesService.updateTemplate(departmentId, templateId, payload);
+    return this.templatesService.updateTemplate(departmentId, templateId, payload, {
+      actorId: request.user?.sub ?? null
+    });
   }
 
   @Delete(':templateId')
   @Permissions(Permission.ManageTemplates)
-  deleteTemplate(@Param('departmentId') departmentId: string, @Param('templateId') templateId: string) {
-    return this.templatesService.deleteTemplate(departmentId, templateId);
+  deleteTemplate(
+    @Param('departmentId') departmentId: string,
+    @Param('templateId') templateId: string,
+    @Req() request: RequestWithUser
+  ) {
+    return this.templatesService.deleteTemplate(departmentId, templateId, {
+      actorId: request.user?.sub ?? null
+    });
   }
 
   @Post(':templateId/regenerate')

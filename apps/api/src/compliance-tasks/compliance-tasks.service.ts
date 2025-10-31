@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
-import { ComplianceTaskStatus, Prisma } from '@prisma/client';
+import { ComplianceTaskStatus } from '@prisma/client';
 import { PrismaService } from '../prisma/prisma.service';
+import { AuditLogsService } from '../audit-logs/audit-logs.service';
 
 interface UpdateOptions {
   actorId?: string | null;
@@ -9,7 +10,7 @@ interface UpdateOptions {
 
 @Injectable()
 export class ComplianceTasksService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(private readonly prisma: PrismaService, private readonly auditLogs: AuditLogsService) {}
 
   listTasks(departmentId: string) {
     return this.prisma.complianceTask.findMany({
@@ -81,26 +82,23 @@ export class ComplianceTasksService {
         reason: options.reason ?? null
       };
 
-      await this.createAuditLog(tx, taskId, options.actorId ?? null, action, metadata);
+      await this.auditLogs.logSensitiveAction(action, {
+        actorId: options.actorId ?? null,
+        departmentId,
+        taskId,
+        metadata,
+        entities: [
+          {
+            type: 'complianceTask',
+            id: taskId,
+            fromStatus: task.status,
+            toStatus: status
+          }
+        ],
+        transaction: tx
+      });
 
       return updated;
-    });
-  }
-
-  private async createAuditLog(
-    tx: Prisma.TransactionClient,
-    taskId: string,
-    actorId: string | null,
-    action: string,
-    metadata: Record<string, unknown>
-  ) {
-    await tx.auditLog.create({
-      data: {
-        task: { connect: { id: taskId } },
-        actor: actorId ? { connect: { id: actorId } } : undefined,
-        action,
-        metadata
-      }
     });
   }
 }
